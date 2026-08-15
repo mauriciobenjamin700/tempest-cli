@@ -36,6 +36,7 @@ from tempest_cli.config import TempestConfig as TempestConfig
 from tempest_cli.config import TypingStrictness as TypingStrictness
 from tempest_cli.config import find_pyproject as find_pyproject
 from tempest_cli.config import load_tempest_config as load_tempest_config
+from tempest_cli.lint import resolve_tool as resolve_tool
 from tempest_cli.lint import run_full_check as run_full_check
 from tempest_cli.lint import run_mypy as run_mypy
 from tempest_cli.lint import run_pytest as run_pytest
@@ -59,6 +60,7 @@ __all__: list[str] = [
     "find_pyproject",
     "generate_pr_prompt",
     "load_tempest_config",
+    "resolve_tool",
     "run_full_check",
     "run_mypy",
     "run_pytest",

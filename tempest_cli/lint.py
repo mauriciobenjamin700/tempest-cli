@@ -28,8 +28,13 @@ def _ruff_ann_args(config: TempestConfig | None) -> list[str]:
     return ["--extend-select", ",".join(codes)]
 
 
-def _resolve(executable: str) -> list[str] | None:
+def resolve_tool(executable: str) -> list[str] | None:
     """Return an argv prefix invoking ``executable`` or ``None`` when absent.
+
+    Public because callers outside the gate need the same lookup — the
+    SDK's OpenAPI code generator formats what it emits with the project's
+    own ruff, and reimplementing the PATH/``uv run`` fallback there would
+    be a second answer to the same question.
 
     Preference order:
 
@@ -65,7 +70,7 @@ def _execute(executable: str, args: list[str]) -> int:
         int: The child process exit code. Returns ``127`` when neither
         the executable nor ``uv`` is available.
     """
-    argv = _resolve(executable)
+    argv = resolve_tool(executable)
     if argv is None:
         typer.echo(
             f"error: '{executable}' is not on PATH and 'uv' is unavailable. "
@@ -219,6 +224,7 @@ def run_full_check(target: str, *, config: TempestConfig | None = None) -> int:
 
 
 __all__: list[str] = [
+    "resolve_tool",
     "run_full_check",
     "run_mypy",
     "run_pytest",
