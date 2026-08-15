@@ -1,6 +1,6 @@
 [project]
 name = "tempest-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Framework-agnostic quality gate for Python projects: ruff + mypy + pytest behind one command, with a typing-strictness dial and a PR-description prompt generator."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,6 +53,10 @@ Documentation = "https://mauriciobenjamin700.github.io/tempest-cli/"
 
 [project.scripts]
 tempest-cli = "tempest_cli.main:main"
+# `tc` is the short alias for the same entry point. It shadows iproute2's
+# `tc(8)` while the environment providing it is on PATH — a traffic-control
+# call must then be made through its absolute path (/usr/sbin/tc).
+tc = "tempest_cli.main:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -14,6 +14,11 @@ tool's exit code.
 | `check` | the four above, in order, stopping at the first failure |
 | `pr-prompt` | builds the PR-description prompt — [its own page](pr-prompt.md) |
 
+!!! tip "`tc` is the short form"
+    The package installs `tempest-cli` and `tc` pointing at the same
+    program. The examples use the long name; `tc check`, `tc fix` and
+    `tc type -s strict` work exactly the same.
+
 ## The full gate
 
 ```bash
@@ -63,8 +68,11 @@ The exit code is the tool's own, untranslated:
 tempest-cli lint; echo "exited $?"
 ```
 
-There is exactly one code of its own: **127**, when the tool is not on
-`PATH` and `uv` is not either — the message then names what was missing.
+There is exactly one code of its own: **127**, when the tool is in none
+of the places the CLI looks — the run's environment, `PATH`, `uv run
+--with` — and the message then names what was missing and how to install
+it. The lookup order is in
+[Installation](installation.md#where-ruff-mypy-and-pytest-come-from).
 
 ## Recap
 

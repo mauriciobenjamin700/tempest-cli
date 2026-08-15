@@ -14,6 +14,11 @@ saída da ferramenta por baixo.
 | `check` | os quatro acima, em ordem, parando na primeira falha |
 | `pr-prompt` | monta o prompt da descrição do PR — [página própria](pr-prompt.md) |
 
+!!! tip "`tc` é a forma curta"
+    O pacote instala `tempest-cli` e `tc` apontando para o mesmo
+    programa. Os exemplos usam o nome longo; `tc check`, `tc fix` e
+    `tc type -s strict` funcionam igual.
+
 ## O gate completo
 
 ```bash
@@ -63,8 +68,10 @@ O código de saída é o da ferramenta, sem tradução:
 tempest-cli lint; echo "saiu $?"
 ```
 
-Só há um código próprio: **127**, quando a ferramenta não está no `PATH`
-e o `uv` também não — aí a mensagem diz qual faltou.
+Só há um código próprio: **127**, quando a ferramenta não está em nenhum
+dos lugares onde a CLI procura — ambiente da execução, `PATH`, `uv run
+--with` — e aí a mensagem diz qual faltou e como instalá-la. A ordem de
+busca está em [Instalação](installation.md#de-onde-vem-o-ruff-o-mypy-e-o-pytest).
 
 ## Recap
 

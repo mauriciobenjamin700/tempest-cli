@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import typer
 
 from tempest_cli.config import TempestConfig
+
+SHIM_PROBE_TIMEOUT_SECONDS = 20.0
+"""Seconds allowed for the ``<tool> --version`` probe of a version-manager shim."""
 
 
 def _ruff_ann_args(config: TempestConfig | None) -> list[str]:
@@ -28,20 +33,138 @@ def _ruff_ann_args(config: TempestConfig | None) -> list[str]:
     return ["--extend-select", ",".join(codes)]
 
 
+def _environment_dirs() -> list[Path]:
+    """Return the executable directories searched ahead of ``PATH``.
+
+    ``PATH`` is a poor first answer on a machine running a version
+    manager: pyenv/asdf put their shim directory on it globally, so a
+    lookup finds ``~/.pyenv/shims/ruff`` even when the project's own
+    environment has no ruff at all. The environments below are the ones
+    that actually belong to the run, so they are consulted first:
+
+    1. the directory of the interpreter running this CLI — where the
+       ``[tools]`` extra installs ruff/mypy/pytest next to the
+       ``tempest-cli`` executable itself;
+    2. ``$VIRTUAL_ENV`` — the activated environment, which matters when
+       the CLI itself lives elsewhere (``uv tool install`` / pipx);
+    3. the nearest ``.venv`` walking up from the working directory — a
+       project environment that was never activated.
+
+    Returns:
+        list[Path]: Existing directories, in preference order, without
+        duplicates.
+    """
+    roots: list[Path] = [Path(sys.executable).parent]
+    virtual_env = os.environ.get("VIRTUAL_ENV")
+    if virtual_env:
+        roots.extend((Path(virtual_env) / "bin", Path(virtual_env) / "Scripts"))
+    try:
+        cwd = Path.cwd()
+    except OSError:
+        cwd = None
+    if cwd is not None:
+        for directory in (cwd, *cwd.parents):
+            candidate = directory / ".venv"
+            if candidate.is_dir():
+                roots.extend((candidate / "bin", candidate / "Scripts"))
+                break
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for root in roots:
+        if root not in seen and root.is_dir():
+            seen.add(root)
+            ordered.append(root)
+    return ordered
+
+
+def _is_shim(path: Path) -> bool:
+    """Report whether ``path`` looks like a version-manager shim.
+
+    pyenv, asdf and rbenv all install their shims into a directory named
+    ``shims``. A shim is a stub that exists for every tool any installed
+    interpreter version ever provided, so its presence says nothing
+    about whether the command can actually run right now.
+
+    Args:
+        path (Path): The resolved executable path.
+
+    Returns:
+        bool: True when the executable sits in a ``shims`` directory.
+    """
+    return path.parent.name == "shims"
+
+
+def _shim_runs(path: Path) -> bool:
+    """Report whether a shim actually dispatches to a real executable.
+
+    Runs ``<path> --version`` and reads the exit code. A pyenv shim for
+    a tool missing from the selected version prints ``pyenv: ruff:
+    command not found`` and exits non-zero — running the gate through it
+    would fail with that message instead of falling back to a runner
+    that works.
+
+    Args:
+        path (Path): The shim to probe.
+
+    Returns:
+        bool: True when the probe exits ``0``. False on a non-zero exit,
+        a timeout, or an OS-level failure to spawn.
+    """
+    try:
+        completed = subprocess.run(
+            [str(path), "--version"],
+            capture_output=True,
+            timeout=SHIM_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0
+
+
+def _path_lookup(executable: str) -> str | None:
+    """Find ``executable`` on ``PATH``, rejecting a shim that goes nowhere.
+
+    Args:
+        executable (str): The command name to look up.
+
+    Returns:
+        str | None: The resolved path, or ``None`` when the command is
+        absent or resolves to a shim that does not dispatch.
+    """
+    found = shutil.which(executable)
+    if found is None:
+        return None
+    path = Path(found)
+    if _is_shim(path) and not _shim_runs(path):
+        return None
+    return found
+
+
 def resolve_tool(executable: str) -> list[str] | None:
     """Return an argv prefix invoking ``executable`` or ``None`` when absent.
 
     Public because callers outside the gate need the same lookup — the
     SDK's OpenAPI code generator formats what it emits with the project's
-    own ruff, and reimplementing the PATH/``uv run`` fallback there would
-    be a second answer to the same question.
+    own ruff, and reimplementing the environment/``uv run`` fallback
+    there would be a second answer to the same question.
 
     Preference order:
 
-    1. ``executable`` available on ``PATH`` directly (already activated venv,
-       global install, etc.).
-    2. ``uv run <executable>`` when ``uv`` is on the ``PATH`` (handles
-       project-local virtualenvs without requiring activation).
+    1. the environments that belong to this run (see
+       :func:`_environment_dirs`): the CLI's own interpreter directory,
+       ``$VIRTUAL_ENV``, then the nearest ``.venv``;
+    2. ``executable`` on ``PATH`` — skipped when it resolves to a
+       version-manager shim that does not dispatch anywhere;
+    3. ``uv run --with <executable> <executable>`` when ``uv`` is on the
+       ``PATH``: the project's own environment plus the tool, without
+       requiring activation or a prior ``uv sync``.
+
+    Step 3 carries ``--with`` on purpose. A plain ``uv run ruff`` falls
+    back to ``PATH`` when the project environment has no ruff — landing
+    right back on the dead shim this lookup just rejected. ``--with``
+    puts the tool in the run's own overlay, so the command is always the
+    one that runs. When the project pins a version, uv resolves the
+    overlay against the project's requirements, so the pin still wins.
 
     Args:
         executable (str): The command name (``ruff``/``mypy``/``pytest``).
@@ -50,12 +173,16 @@ def resolve_tool(executable: str) -> list[str] | None:
         list[str] | None: argv prefix to extend with extra arguments, or
         ``None`` when no runner could be found.
     """
-    direct = shutil.which(executable)
+    for directory in _environment_dirs():
+        local = shutil.which(executable, path=str(directory))
+        if local is not None:
+            return [local]
+    direct = _path_lookup(executable)
     if direct is not None:
         return [direct]
-    uv = shutil.which("uv")
+    uv = _path_lookup("uv")
     if uv is not None:
-        return [uv, "run", executable]
+        return [uv, "run", "--with", executable, executable]
     return None
 
 
@@ -73,8 +200,10 @@ def _execute(executable: str, args: list[str]) -> int:
     argv = resolve_tool(executable)
     if argv is None:
         typer.echo(
-            f"error: '{executable}' is not on PATH and 'uv' is unavailable. "
-            f"Install it (or activate the project venv) and retry.",
+            f"error: '{executable}' was not found in this project's environment, "
+            f"on PATH, and 'uv' is unavailable to run it. "
+            f"Install it with 'uv add --dev {executable}' — or the whole set "
+            f"with 'uv add --dev \"tempest-cli[tools]\"' — and retry.",
             err=True,
         )
         return 127

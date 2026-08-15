@@ -19,6 +19,8 @@ uv add --dev tempest-cli
 tempest-cli check          # lint + fmt-check + type + test, in order, stops at the first failure
 tempest-cli fix            # every ruff autofix, then format
 tempest-cli type -s strict # override the configured strictness for one run
+
+tc check                   # `tc` is the short alias for the same program
 ```
 
 ## Why it exists
@@ -111,8 +113,16 @@ register_commands(cli)
 ## Installing the tools
 
 `tempest-cli` shells out to whatever `ruff`, `mypy` and `pytest` it
-finds — it does not pin them, so your project chooses the versions. To
-install them alongside it:
+finds — it does not pin them, so your project chooses the versions. The
+lookup runs in this order:
+
+1. the environments of the run — the interpreter's own directory, then
+   `$VIRTUAL_ENV`, then the nearest `.venv` up the tree;
+2. `PATH`, skipping a pyenv/asdf shim that dispatches nowhere (the one
+   that answers `pyenv: ruff: command not found`);
+3. `uv run --with <tool> <tool>`, when `uv` is available.
+
+To install the three alongside it:
 
 ```bash
 uv add --dev "tempest-cli[tools]"

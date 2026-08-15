@@ -10,6 +10,7 @@ uma biblioteca, um script. A única dependência de runtime é o `typer`.
 ```bash
 uv add --dev tempest-cli
 tempest-cli check
+tc check          # o mesmo, pelo apelido curto
 ```
 
 ```console

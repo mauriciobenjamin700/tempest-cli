@@ -10,6 +10,7 @@ library, a script. The only runtime dependency is `typer`.
 ```bash
 uv add --dev tempest-cli
 tempest-cli check
+tc check          # the same, through the short alias
 ```
 
 ```console

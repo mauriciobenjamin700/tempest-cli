@@ -14,6 +14,8 @@ tempest-cli check                 # lint + fmt-check + type + test
 tempest-cli fix                   # every ruff autofix, then format
 tempest-cli type -s strict        # override the configured strictness
 tempest-cli pr-prompt | claude -p
+
+tc check                          # `tc` is the short alias for the same CLI
 ```
 
 Everything is importable too, for a project that would rather wire the
@@ -47,7 +49,7 @@ from tempest_cli.pr_prompt import GitError as GitError
 from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"
 """Installed package version."""
 
 __all__: list[str] = [

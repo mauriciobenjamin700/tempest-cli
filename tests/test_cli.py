@@ -82,6 +82,26 @@ def test_public_surface_is_importable() -> None:
         assert hasattr(tempest_cli, name), name
 
 
+def test_both_console_scripts_point_at_the_same_entry_point() -> None:
+    """`tc` is the short alias, so it must stay wired to `main`.
+
+    Read from the installed distribution rather than from
+    ``pyproject.toml``: what matters is the script a user actually got,
+    which is what the wheel declared at build time.
+    """
+    from importlib.metadata import entry_points
+
+    scripts = {
+        entry.name: entry.value
+        for entry in entry_points(group="console_scripts")
+        if entry.name in {"tempest-cli", "tc"}
+    }
+    assert scripts == {
+        "tempest-cli": "tempest_cli.main:main",
+        "tc": "tempest_cli.main:main",
+    }
+
+
 def test_importing_the_package_pulls_no_web_framework() -> None:
     """The whole point of the extraction: no FastAPI, no SQLAlchemy."""
     import subprocess
