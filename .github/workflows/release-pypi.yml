@@ -1,0 +1,135 @@
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Verify tag matches project version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PYPROJECT_VERSION=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
+          PACKAGE_VERSION=$(python -c "import re; print(re.search(r'__version__:\s*str\s*=\s*\"([^\"]+)\"', open('tempest_cli/__init__.py').read()).group(1))")
+          echo "Tag:         $TAG_VERSION"
+          echo "pyproject:   $PYPROJECT_VERSION"
+          echo "__version__: $PACKAGE_VERSION"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ] || [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Version mismatch — bump pyproject.toml AND tempest_cli/__init__.py to match the tag before retagging."
+            exit 1
+          fi
+
+      - name: Install project
+        run: uv sync --all-extras
+
+      - name: Quality gate (dogfooded)
+        run: uv run tempest-cli check
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify metadata
+        run: |
+          uv tool install twine
+          uv tool run twine check dist/*
+
+      - name: Verify wheel carries the package and the PR templates
+        run: |
+          python -c "import zipfile, glob; \
+            wheel = glob.glob('dist/*.whl')[0]; \
+            members = zipfile.ZipFile(wheel).namelist(); \
+            py_files = [n for n in members if n.startswith('tempest_cli/') and n.endswith('.py')]; \
+            templates = [n for n in members if n.endswith('.md') and '_templates' in n]; \
+            print('Python files:', len(py_files), '| PR templates:', len(templates)); \
+            assert len(py_files) >= 5, f'wheel suspiciously empty ({len(py_files)} files)'; \
+            assert len(templates) == 2, 'bundled PR templates missing from wheel'; \
+            print('OK')"
+
+      - name: Smoke-install built wheel in a clean venv
+        run: |
+          uv venv --python 3.11 /tmp/smoke-venv
+          uv pip install --python /tmp/smoke-venv/bin/python --quiet "$(ls dist/*.whl)"
+          /tmp/smoke-venv/bin/python -c "import sys, tempest_cli as m; \
+            assert m.__version__, 'no __version__'; \
+            assert m.run_full_check and m.load_tempest_config and m.generate_pr_prompt, 'surface missing'; \
+            heavy = {'fastapi', 'sqlalchemy', 'alembic', 'starlette', 'pydantic'}; \
+            import tempest_cli.main; \
+            loaded = {name.split('.')[0] for name in sys.modules}; \
+            assert not (heavy & loaded), f'pulled a web framework: {sorted(heavy & loaded)}'; \
+            print('Smoke OK · version =', m.__version__)"
+          /tmp/smoke-venv/bin/tempest-cli --version
+
+      - name: Upload distributions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/tempest-cli
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github_release:
+    name: GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python - "$VERSION" > notes.md <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          changelog = open("CHANGELOG.md").read()
+          match = re.search(
+              r"## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=\n## \[|\Z)",
+              changelog,
+              re.DOTALL,
+          )
+          print(match.group(1).strip() if match else "See CHANGELOG.md.")
+          PY
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md --latest
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag --latest
+          fi

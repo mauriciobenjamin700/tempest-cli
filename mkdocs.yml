@@ -1,0 +1,140 @@
+site_name: tempest-cli
+site_description: >-
+  Quality gate for any Python project — ruff, mypy and pytest behind one
+  command, with a typing-strictness dial read from pyproject.toml.
+site_url: https://mauriciobenjamin700.github.io/tempest-cli/
+repo_url: https://github.com/mauriciobenjamin700/tempest-cli
+repo_name: mauriciobenjamin700/tempest-cli
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Mauricio Benjamin — MIT License
+
+theme:
+  name: material
+  language: pt-BR
+  features:
+    - content.action.edit
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+plugins:
+  - search
+  # Seletor PT-BR / EN-US no header. Arquivos sem sufixo são PT (default);
+  # traduções vivem em `<nome>.en.md`.
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: pt
+          name: Português (BR)
+          default: true
+          build: true
+        - locale: en
+          name: English (US)
+          build: true
+          site_name: tempest-cli
+          nav:
+            - Home: index.md
+            - Installation: installation.md
+            - Commands: commands.md
+            - Typing strictness: configuration.md
+            - PR descriptions: pr-prompt.md
+            - Use as a library: library.md
+            - Reference: reference.md
+            - Changelog: changelog.md
+          nav_translations:
+            Início: Home
+            Instalação: Installation
+            Comandos: Commands
+            "Rigor de tipagem": "Typing strictness"
+            "Descrições de PR": "PR descriptions"
+            "Usar como biblioteca": "Use as a library"
+            Referência: Reference
+            Changelog: Changelog
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            docstring_style: google
+            docstring_section_style: table
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            line_length: 88
+            filters:
+              - "!^_"
+          paths: [.]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Início: index.md
+  - Instalação: installation.md
+  - Comandos: commands.md
+  - "Rigor de tipagem": configuration.md
+  - "Descrições de PR": pr-prompt.md
+  - "Usar como biblioteca": library.md
+  - Referência: reference.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mauriciobenjamin700/tempest-cli
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/tempest-cli/

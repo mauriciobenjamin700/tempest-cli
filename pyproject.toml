@@ -1,0 +1,150 @@
+[project]
+name = "tempest-cli"
+version = "0.1.0"
+description = "Framework-agnostic quality gate for Python projects: ruff + mypy + pytest behind one command, with a typing-strictness dial and a PR-description prompt generator."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Mauricio Benjamin", email = "mauricio.benjamin@reloverelations.com" },
+]
+keywords = [
+    "cli",
+    "lint",
+    "mypy",
+    "pytest",
+    "quality",
+    "ruff",
+    "typing",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+# The gate shells out to whatever `ruff` / `mypy` / `pytest` it finds on
+# PATH or in the active environment, so none of them is required to
+# install this package. `[tools]` is the convenience bundle for a project
+# that would rather pin them here than in its own dev group.
+tools = [
+    "mypy>=1.13.0",
+    "pytest>=8.3.3",
+    "ruff>=0.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mauriciobenjamin700/tempest-cli"
+Repository = "https://github.com/mauriciobenjamin700/tempest-cli"
+Issues = "https://github.com/mauriciobenjamin700/tempest-cli/issues"
+Documentation = "https://mauriciobenjamin700.github.io/tempest-cli/"
+
+[project.scripts]
+tempest-cli = "tempest_cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tempest_cli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"tempest_cli/_templates/pull_request_template.pt-BR.md" = "tempest_cli/_templates/pull_request_template.pt-BR.md"
+"tempest_cli/_templates/pull_request_template.en-US.md" = "tempest_cli/_templates/pull_request_template.en-US.md"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13.0",
+    "pytest>=8.3.3",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+docs = [
+    "mkdocs-material>=9.5.0",
+    "mkdocs-static-i18n>=1.2.0",
+    "mkdocstrings[python]>=0.26.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = [".", "tests"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "N", "SIM", "RUF", "ANN"]
+ignore = ["B008", "B006", "UP046", "ANN401", "ANN002", "ANN003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["typer._click", "typer._click.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=tempest_cli",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["tempest_cli"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+# This project dogfoods its own gate.
+[tool.tempest]
+typing_strictness = "strict"
