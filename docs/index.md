@@ -5,7 +5,9 @@ Um comando para o gate de qualidade de qualquer projeto Python — `ruff`,
 em vez de espalhado por quatro alvos de Makefile.
 
 Agnóstico de framework de propósito: Django, Flask, Litestar, FastAPI,
-uma biblioteca, um script. A única dependência de runtime é o `typer`.
+uma biblioteca, um script. As dependências de runtime são duas: o
+`typer` e o `ruff` — que já vem junto, para o gate rodar assim que
+instala.
 
 ```bash
 uv add --dev tempest-cli

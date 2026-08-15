@@ -320,10 +320,16 @@ def test_a_shim_probe_that_cannot_spawn_is_not_runnable(
     assert lint._shim_runs(Path("/home/u/.pyenv/shims/ruff")) is False
 
 
-def test_environment_dirs_prefers_the_running_interpreter(
+def test_environment_dirs_prefers_the_project_over_the_cli_itself(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The CLI's own environment is searched before $VIRTUAL_ENV."""
+    """A pinned ruff must win over the one shipped with this package.
+
+    `ruff` is a dependency of tempest-cli, so the CLI's own environment
+    always has one. Searching it first would silently override the
+    version a project pinned whenever the CLI lives elsewhere
+    (`uv tool install` / pipx).
+    """
     interpreter_dir = tmp_path / "cli-env" / "bin"
     interpreter_dir.mkdir(parents=True)
     active = tmp_path / "active"
@@ -332,8 +338,8 @@ def test_environment_dirs_prefers_the_running_interpreter(
     monkeypatch.setenv("VIRTUAL_ENV", str(active))
     monkeypatch.chdir(tmp_path)
     dirs = lint._environment_dirs()
-    assert dirs[0] == interpreter_dir
-    assert active / "bin" in dirs
+    assert dirs[0] == active / "bin"
+    assert dirs.index(interpreter_dir) > dirs.index(active / "bin")
 
 
 def test_environment_dirs_finds_an_unactivated_venv(
@@ -346,3 +352,18 @@ def test_environment_dirs_finds_an_unactivated_venv(
     monkeypatch.delenv("VIRTUAL_ENV", raising=False)
     monkeypatch.chdir(project / "src")
     assert project / ".venv" / "bin" in lint._environment_dirs()
+
+
+def test_ruff_ships_with_the_package() -> None:
+    """Installing tempest-cli must be enough to run the ruff commands.
+
+    Six of the eight commands are ruff. Reading the requirement from the
+    installed distribution, not from ``pyproject.toml``, is what proves
+    a user actually receives it.
+    """
+    from importlib.metadata import requires
+
+    declared = requires("tempest-cli") or []
+    runtime = [item for item in declared if "extra ==" not in item]
+    assert any(item.startswith("ruff") for item in runtime), runtime
+    assert not any(item.startswith(("mypy", "pytest")) for item in runtime), runtime

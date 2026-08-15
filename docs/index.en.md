@@ -5,7 +5,9 @@ and `pytest` — with the typing strictness living in `pyproject.toml`
 instead of spread across four Makefile targets.
 
 Framework-agnostic on purpose: Django, Flask, Litestar, FastAPI, a
-library, a script. The only runtime dependency is `typer`.
+library, a script. There are two runtime dependencies: `typer` and
+`ruff` — the latter ships along, so the gate runs the moment you install
+it.
 
 ```bash
 uv add --dev tempest-cli

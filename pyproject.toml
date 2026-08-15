@@ -1,6 +1,6 @@
 [project]
 name = "tempest-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "Framework-agnostic quality gate for Python projects: ruff + mypy + pytest behind one command, with a typing-strictness dial and a PR-description prompt generator."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,18 +31,25 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    # `ruff` ships with the package: six of the eight commands are ruff,
+    # so a tempest-cli without one is a gate that cannot run. It costs
+    # nothing to depend on — a static binary wheel with no Python
+    # dependencies of its own, so no bound of its propagates to anyone.
+    # The lookup still prefers a ruff the project pinned; this one is the
+    # fallback for a project that pinned none.
+    "ruff>=0.8.0",
     "typer>=0.12.0",
 ]
 
 [project.optional-dependencies]
-# The gate shells out to whatever `ruff` / `mypy` / `pytest` it finds on
-# PATH or in the active environment, so none of them is required to
-# install this package. `[tools]` is the convenience bundle for a project
-# that would rather pin them here than in its own dev group.
+# `mypy` and `pytest` are deliberately NOT dependencies. A mypy bump
+# changes which errors a codebase reports, and pytest has to match the
+# plugins and the test suite it runs — both are the project's call, not
+# this package's. `[tools]` is the convenience bundle for whoever would
+# rather pin them here than in their own dev group.
 tools = [
     "mypy>=1.13.0",
     "pytest>=8.3.3",
-    "ruff>=0.8.0",
 ]
 
 [project.urls]

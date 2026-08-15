@@ -42,19 +42,25 @@ def _environment_dirs() -> list[Path]:
     environment has no ruff at all. The environments below are the ones
     that actually belong to the run, so they are consulted first:
 
-    1. the directory of the interpreter running this CLI — where the
-       ``[tools]`` extra installs ruff/mypy/pytest next to the
-       ``tempest-cli`` executable itself;
-    2. ``$VIRTUAL_ENV`` — the activated environment, which matters when
-       the CLI itself lives elsewhere (``uv tool install`` / pipx);
-    3. the nearest ``.venv`` walking up from the working directory — a
-       project environment that was never activated.
+    1. ``$VIRTUAL_ENV`` — the activated environment;
+    2. the nearest ``.venv`` walking up from the working directory — a
+       project environment that was never activated;
+    3. the directory of the interpreter running this CLI.
+
+    The project comes before the interpreter on purpose. ``ruff`` ships
+    as a dependency of this package, so the CLI's own environment always
+    has one; a project that pins its own must still get the version it
+    pinned, with the bundled one serving only as the fallback for a
+    project that pins nothing. When the CLI is installed *into* the
+    project (the common case) all three point at the same directory and
+    the order is moot — it only decides for ``uv tool install`` / pipx,
+    where the CLI lives in an environment of its own.
 
     Returns:
         list[Path]: Existing directories, in preference order, without
         duplicates.
     """
-    roots: list[Path] = [Path(sys.executable).parent]
+    roots: list[Path] = []
     virtual_env = os.environ.get("VIRTUAL_ENV")
     if virtual_env:
         roots.extend((Path(virtual_env) / "bin", Path(virtual_env) / "Scripts"))
@@ -68,6 +74,7 @@ def _environment_dirs() -> list[Path]:
             if candidate.is_dir():
                 roots.extend((candidate / "bin", candidate / "Scripts"))
                 break
+    roots.append(Path(sys.executable).parent)
     seen: set[Path] = set()
     ordered: list[Path] = []
     for root in roots:

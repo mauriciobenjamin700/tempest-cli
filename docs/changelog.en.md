@@ -3,6 +3,23 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
+## [0.3.0] — 2026-08-15
+
+### Changed
+
+- **`ruff` now ships with the package.** It left the `[tools]` extra for
+  the runtime dependencies, so `uv add --dev tempest-cli` is enough for
+  `lint`, `fix`, `format` and `fmt-check` to run. The cost is nil: ruff
+  is a static binary wheel with no Python dependencies of its own, so no
+  bound of its reaches a consumer's resolution. `mypy` and `pytest` stay
+  out on purpose; `[tools]` now installs exactly those two.
+- **The project's environment is searched before the CLI's own.** With
+  ruff bundled, the CLI's environment always has one — looking there
+  first would silently override a version the project pinned whenever
+  `tempest-cli` lives apart from it (`uv tool install`, pipx). The order
+  is now `$VIRTUAL_ENV` → nearest `.venv` → the CLI's environment →
+  `PATH` → `uv run --with`.
+
 ## [0.2.0] — 2026-08-15
 
 ### Added

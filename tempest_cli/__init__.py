@@ -5,9 +5,11 @@ typing-strictness dial read from ``[tool.tempest]`` in the project's
 ``pyproject.toml`` — and a generator for the prompt that makes an AI fill
 a pull-request description from the branch's own diff.
 
-It knows nothing about any web framework. The only runtime dependency is
-``typer``; the tools themselves are invoked from the active environment,
-so a project pins the ruff and mypy versions it wants.
+It knows nothing about any web framework. ``ruff`` ships with it, so the
+lint/format commands work the moment it is installed; ``mypy`` and
+``pytest`` are left to the project, which pins the versions it wants.
+The tools are invoked from the project's environment first, so a pinned
+version always beats the bundled one.
 
 ```bash
 tempest-cli check                 # lint + fmt-check + type + test
@@ -49,7 +51,7 @@ from tempest_cli.pr_prompt import GitError as GitError
 from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
 
-__version__: str = "0.2.0"
+__version__: str = "0.3.0"
 """Installed package version."""
 
 __all__: list[str] = [

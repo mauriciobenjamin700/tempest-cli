@@ -11,7 +11,8 @@ One command for the quality gate of any Python project — `ruff` +
 `pyproject.toml` instead of in four different Makefile targets.
 
 Framework-agnostic on purpose: Django, Flask, Litestar, FastAPI, a
-library, a script. The only runtime dependency is `typer`.
+library, a script. It brings `ruff` along, so the gate runs the moment
+you install it; `typer` is the only other runtime dependency.
 
 ```bash
 uv add --dev tempest-cli
@@ -110,23 +111,32 @@ cli: typer.Typer = typer.Typer(name="mytool")
 register_commands(cli)
 ```
 
-## Installing the tools
+## Where the tools come from
 
-`tempest-cli` shells out to whatever `ruff`, `mypy` and `pytest` it
-finds — it does not pin them, so your project chooses the versions. The
-lookup runs in this order:
+**`ruff` comes with the package** — six of the eight commands are ruff,
+so `lint`, `fix`, `format` and `fmt-check` work straight after
+`uv add --dev tempest-cli`, with nothing else to install. It is a static
+binary wheel with no Python dependencies of its own, so nothing of its
+propagates into your resolution.
 
-1. the environments of the run — the interpreter's own directory, then
-   `$VIRTUAL_ENV`, then the nearest `.venv` up the tree;
-2. `PATH`, skipping a pyenv/asdf shim that dispatches nowhere (the one
-   that answers `pyenv: ruff: command not found`);
-3. `uv run --with <tool> <tool>`, when `uv` is available.
-
-To install the three alongside it:
+`mypy` and `pytest` are deliberately left to you — a mypy bump changes
+which errors your code reports, and pytest has to match your plugins and
+your suite. Add them yourself, or take the bundle:
 
 ```bash
 uv add --dev "tempest-cli[tools]"
 ```
+
+Whatever you pin wins over the bundled ruff. The lookup runs in this
+order:
+
+1. the project's environment — `$VIRTUAL_ENV`, then the nearest `.venv`
+   up the tree;
+2. the environment `tempest-cli` itself runs from (where the bundled
+   ruff lives);
+3. `PATH`, skipping a pyenv/asdf shim that dispatches nowhere (the one
+   that answers `pyenv: ruff: command not found`);
+4. `uv run --with <tool> <tool>`, when `uv` is available.
 
 ## Relationship with tempest-fastapi-sdk
 
