@@ -55,6 +55,9 @@ into a versioned value rather than a flag someone remembered to pass.
 - **[Commands »](commands.md)** — all eight, what each runs and returns.
 - **[Typing strictness »](configuration.md)** — the three levels, what
   each adds, and why `ANN401` is never enabled.
+- **[Tuning the rules »](rules.md)** — turning rules on, off and down
+  from `pyproject.toml`; the recipe that makes a legacy Django project
+  green.
 - **[PR descriptions »](pr-prompt.md)** — the prompt that makes an AI
   write the PR description from the branch's own diff.
 - **[Use as a library »](library.md)** — calling the runners from your

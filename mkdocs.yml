@@ -70,6 +70,7 @@ plugins:
             - Installation: installation.md
             - Commands: commands.md
             - Typing strictness: configuration.md
+            - Tuning the rules: rules.md
             - PR descriptions: pr-prompt.md
             - Use as a library: library.md
             - Reference: reference.md
@@ -79,6 +80,7 @@ plugins:
             Instalação: Installation
             Comandos: Commands
             "Rigor de tipagem": "Typing strictness"
+            "Ajustando as regras": "Tuning the rules"
             "Descrições de PR": "PR descriptions"
             "Usar como biblioteca": "Use as a library"
             Referência: Reference
@@ -127,6 +129,7 @@ nav:
   - Instalação: installation.md
   - Comandos: commands.md
   - "Rigor de tipagem": configuration.md
+  - "Ajustando as regras": rules.md
   - "Descrições de PR": pr-prompt.md
   - "Usar como biblioteca": library.md
   - Referência: reference.md

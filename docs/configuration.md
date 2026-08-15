@@ -35,6 +35,12 @@ O nível **soma** flags ao que você já configurou em `[tool.ruff]` e
     `ANN002` / `ANN003` (`*args` / `**kwargs`) também ficam de fora: em
     wrapper de passagem viram ruído sem informação.
 
+!!! tip "E as regras em si?"
+    Este knob só mexe em tipagem. Ligar, desligar e afrouxar qualquer
+    outra regra — inclusive calar as reclamações do mypy sobre
+    bibliotecas sem tipos, que assustam na primeira execução — é
+    assunto de **[Ajustando as regras](rules.md)**.
+
 ## Override por execução
 
 ```bash

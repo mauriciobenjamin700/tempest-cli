@@ -73,6 +73,13 @@ they avoid `Any`.
 Override per run with `--strictness` / `-s`. Absent config means
 `standard`.
 
+Everything that is *not* typing — silencing an untyped library, skipping
+generated code, dropping a rule that does not fit your framework — is
+ordinary `[tool.ruff]` / `[tool.mypy]` configuration. The recipes,
+including the one that takes a legacy Django project to a green gate,
+are in **[Tuning the rules](https://mauriciobenjamin700.github.io/tempest-cli/rules/)**
+([EN](https://mauriciobenjamin700.github.io/tempest-cli/en/rules/)).
+
 ## PR descriptions from the branch itself
 
 ```bash

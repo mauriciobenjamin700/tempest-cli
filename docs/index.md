@@ -56,6 +56,9 @@ cobra" num valor versionado, não numa flag que alguém lembrou de passar.
   devolve.
 - **[Rigor de tipagem »](configuration.md)** — os três níveis, o que
   cada um acrescenta e por que `ANN401` nunca entra.
+- **[Ajustando as regras »](rules.md)** — ligar, desligar e afrouxar
+  regra pelo `pyproject.toml`; a receita que deixa um Django legado
+  verde.
 - **[Descrições de PR »](pr-prompt.md)** — o prompt que faz uma IA
   escrever a descrição do PR a partir do diff da branch.
 - **[Usar como biblioteca »](library.md)** — chamar os runners do seu

@@ -36,6 +36,12 @@ The level **adds** flags on top of what you already configured in
     `ANN002` / `ANN003` (`*args` / `**kwargs`) are left out too: on a
     passthrough wrapper they are noise carrying no information.
 
+!!! tip "And the rules themselves?"
+    This knob only moves typing. Turning any other rule on, off or down
+    — including silencing mypy's complaints about untyped libraries,
+    the ones that make the first run look alarming — belongs to
+    **[Tuning the rules](rules.md)**.
+
 ## Per-run override
 
 ```bash
