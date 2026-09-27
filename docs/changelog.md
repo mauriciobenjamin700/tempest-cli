@@ -4,7 +4,7 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
-## [Unreleased]
+## [0.4.0] — 2026-09-27
 
 ### Adicionado
 

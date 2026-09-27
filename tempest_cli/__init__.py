@@ -51,7 +51,7 @@ from tempest_cli.pr_prompt import GitError as GitError
 from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
 
-__version__: str = "0.3.0"
+__version__: str = "0.4.0"
 """Installed package version."""
 
 __all__: list[str] = [

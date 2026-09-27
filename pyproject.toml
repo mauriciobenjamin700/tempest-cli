@@ -1,6 +1,6 @@
 [project]
 name = "tempest-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "Framework-agnostic quality gate for Python projects: ruff + mypy + pytest behind one command, with a typing-strictness dial and a PR-description prompt generator."
 readme = "README.md"
 requires-python = ">=3.11"
