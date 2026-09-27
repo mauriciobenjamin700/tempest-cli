@@ -70,6 +70,88 @@ def _resolve_config(target: str, strictness: str | None) -> TempestConfig:
     return TempestConfig(typing_strictness=cast(TypingStrictness, strictness))
 
 
+WORKER_KEYWORDS: frozenset[str] = frozenset({"auto", "logical"})
+"""Non-numeric ``--workers`` values pytest-xdist accepts for ``-n``."""
+
+
+def _fast_option() -> typer.models.OptionInfo:
+    """Build a fresh ``--fast`` option.
+
+    Returns:
+        typer.models.OptionInfo: The configured option.
+    """
+    return cast(
+        "typer.models.OptionInfo",
+        typer.Option(
+            "--fast",
+            help=(
+                "Run the suite in parallel with pytest-xdist: -n <workers> "
+                "-p no:cacheprovider. Needs pytest-xdist in the environment "
+                "pytest runs in."
+            ),
+        ),
+    )
+
+
+def _workers_option() -> typer.models.OptionInfo:
+    """Build a fresh ``--workers`` option.
+
+    Returns:
+        typer.models.OptionInfo: The configured option.
+    """
+    return cast(
+        "typer.models.OptionInfo",
+        typer.Option(
+            "--workers",
+            "-w",
+            help=(
+                "Worker count for --fast: a number, 'auto' (the default: one "
+                "per physical core when psutil is installed, per logical CPU "
+                "otherwise) or 'logical'. Requires --fast."
+            ),
+        ),
+    )
+
+
+def _resolve_workers(
+    ctx: typer.Context,
+    *,
+    fast: bool,
+    workers: str,
+) -> str:
+    """Validate ``--workers`` against ``--fast`` and pytest-xdist's grammar.
+
+    Args:
+        ctx (typer.Context): The command context, used to tell an
+            explicit ``--workers`` from its default.
+        fast (bool): The ``--fast`` flag value.
+        workers (str): The ``--workers`` value.
+
+    Returns:
+        str: The value to hand to ``pytest -n``.
+
+    Raises:
+        typer.BadParameter: When ``--workers`` is given without ``--fast``,
+            or is neither a non-negative integer nor ``auto``/``logical``.
+    """
+    explicit = getattr(ctx.get_parameter_source("workers"), "name", "") == (
+        "COMMANDLINE"
+    )
+    if explicit and not fast:
+        raise typer.BadParameter(
+            "--workers only applies to a parallel run; add --fast.",
+            param_hint="--workers",
+        )
+    if workers in WORKER_KEYWORDS or workers.isdigit():
+        return workers
+    allowed = ", ".join(sorted(WORKER_KEYWORDS))
+    raise typer.BadParameter(
+        f"invalid worker count {workers!r}; expected a non-negative integer "
+        f"or one of {allowed}.",
+        param_hint="--workers",
+    )
+
+
 def register_commands(app: typer.Typer) -> None:
     """Register the quality gate on an existing Typer application.
 
@@ -163,25 +245,60 @@ def register_commands(app: typer.Typer) -> None:
 
     @app.command("test")
     def test_cmd(
+        ctx: typer.Context,
         target: Annotated[
             str | None,
             typer.Argument(help="Optional pytest path filter."),
         ] = None,
+        fast: Annotated[bool, _fast_option()] = False,
+        workers: Annotated[str, _workers_option()] = lint_module.DEFAULT_FAST_WORKERS,
     ) -> None:
-        """Run ``pytest`` (forwarding the optional path argument)."""
-        raise typer.Exit(lint_module.run_pytest(target))
+        """Run ``pytest`` (forwarding the optional path argument).
+
+        --fast spreads the suite across pytest-xdist workers (-n auto
+        unless --workers says otherwise) and turns the cache plugin off,
+        so --lf / --ff belong to serial runs. Without pytest-xdist in the
+        environment pytest runs in, it stops with the install command and
+        exit code 127.
+
+        A test that fails only under --fast shares state with another
+        one: a file, a port, a module-level global, a fixed sleep racing
+        a busy machine. Before treating it as a regression, rerun it
+        alone, serially, with its node id as the target
+        (test tests/test_x.py::test_name). Passing alone means the defect
+        is the test's isolation, not the change under review.
+        """
+        resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
+        raise typer.Exit(
+            lint_module.run_pytest(target, fast=fast, workers=resolved_workers)
+        )
 
     @app.command("check")
     def check_cmd(
+        ctx: typer.Context,
         target: Annotated[
             str,
             typer.Argument(help="Path to inspect. Defaults to the current directory."),
         ] = ".",
         strictness: Annotated[str | None, _strictness_option()] = None,
+        fast: Annotated[bool, _fast_option()] = False,
+        workers: Annotated[str, _workers_option()] = lint_module.DEFAULT_FAST_WORKERS,
     ) -> None:
-        """Run the full quality gate (lint + fmt-check + type + test)."""
+        """Run the full quality gate (lint + fmt-check + type + test).
+
+        ``--fast`` runs the test step as ``test --fast`` does, with the
+        pytest-xdist check made before the first step.
+        """
         config = _resolve_config(target, strictness)
-        raise typer.Exit(lint_module.run_full_check(target, config=config))
+        resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
+        raise typer.Exit(
+            lint_module.run_full_check(
+                target,
+                config=config,
+                fast=fast,
+                workers=resolved_workers,
+            )
+        )
 
     @app.command("pr-prompt")
     def pr_prompt_cmd(

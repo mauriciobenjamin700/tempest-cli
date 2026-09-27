@@ -4,6 +4,30 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
+## [Unreleased]
+
+### Adicionado
+
+- **`test --fast` e `check --fast`: a suíte em paralelo.** Roda
+  `pytest -n <workers> -p no:cacheprovider [alvo]` com o pytest-xdist;
+  `--workers` / `-w` aceita o que o `pytest -n` aceita (inteiro, `auto` —
+  o padrão — ou `logical`) e é erro de uso sem `--fast`. O alvo é
+  repassado e o código de saída do pytest volta sem tradução. É flag, e
+  não subcomando, porque `test fast` continua significando a pasta
+  `fast/`. [Detalhes](commands.md#a-suite-em-paralelo-fast).
+- **pytest-xdist ausente vira frase, não `unrecognized arguments: -n`.**
+  O `--fast` pergunta ao interpretador que vai rodar o pytest se ele
+  importa o `xdist`; faltando, a mensagem nomeia o pacote e os extras
+  (`tempest-cli[tools]`, `tempest-fastapi-sdk[tests]`) e a saída é 127,
+  sem traceback. No `check --fast` a checagem vem antes do primeiro passo.
+- **`run_pytest` / `run_full_check` ganham `fast=` e `workers=`**
+  keyword-only, com default serial.
+
+### Mudado
+
+- **O `[tools]` agora leva `pytest-xdist>=3.8.0`.** Sem teto no
+  `requires-dist` (`execnet>=2.1`, `pytest>=7.0.0`).
+
 ## [0.3.0] — 2026-08-15
 
 ### Mudado

@@ -42,8 +42,8 @@ remembered to pass.
 | `tempest-cli format` | `ruff format` (writes) |
 | `tempest-cli fmt-check` | `ruff format --check` (read-only) |
 | `tempest-cli type` | `mypy` |
-| `tempest-cli test` | `pytest` |
-| `tempest-cli check` | all four, in order, stopping at the first failure |
+| `tempest-cli test` | `pytest` (`--fast` spreads it across cores with pytest-xdist: `-n auto -p no:cacheprovider`, `-w N` to choose) |
+| `tempest-cli check` | all four, in order, stopping at the first failure (`--fast` runs the test step in parallel) |
 | `tempest-cli pr-prompt` | builds the prompt that makes an AI write this branch's PR description |
 
 Every command takes an optional path (`tempest-cli lint src/`) and
@@ -131,8 +131,11 @@ which errors your code reports, and pytest has to match your plugins and
 your suite. Add them yourself, or take the bundle:
 
 ```bash
-uv add --dev "tempest-cli[tools]"
+uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
+
+`pytest-xdist` is what `test --fast` runs the suite with; its
+`requires-dist` (`execnet>=2.1`, `pytest>=7.0.0`) carries no upper bound.
 
 Whatever you pin wins over the bundled ruff. The lookup runs in this
 order:

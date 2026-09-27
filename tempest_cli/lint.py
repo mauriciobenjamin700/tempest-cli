@@ -15,6 +15,33 @@ from tempest_cli.config import TempestConfig
 SHIM_PROBE_TIMEOUT_SECONDS = 20.0
 """Seconds allowed for the ``<tool> --version`` probe of a version-manager shim."""
 
+MODULE_PROBE_TIMEOUT_SECONDS = 120.0
+"""Seconds allowed for probing whether pytest's interpreter can import a module.
+
+Generous on purpose: through the ``uv run --with pytest`` fallback the
+probe is the first thing to touch the project environment, so it may
+pay for a resolution and a sync before the import even starts.
+"""
+
+DEFAULT_FAST_WORKERS = "auto"
+"""Worker count ``--fast`` hands to ``pytest -n`` when none is given.
+
+``auto`` is pytest-xdist's own keyword for one worker per CPU core:
+physical cores when ``psutil`` is importable, logical CPUs otherwise.
+"""
+
+XDIST_MODULE = "xdist"
+"""Import name of pytest-xdist, the plugin that provides ``pytest -n``."""
+
+MISSING_TOOL_EXIT_CODE = 127
+"""Exit code reported when a tool, or a plugin ``--fast`` needs, is absent."""
+
+_MODULE_PROBE_SOURCE = (
+    "import importlib.util, sys; "
+    "sys.exit(0 if importlib.util.find_spec(sys.argv[1]) else 1)"
+)
+"""Program run inside pytest's interpreter to locate a module by name."""
+
 
 def _ruff_ann_args(config: TempestConfig | None) -> list[str]:
     """Build the ruff ``--extend-select`` args for ``config``'s level.
@@ -213,7 +240,7 @@ def _execute(executable: str, args: list[str]) -> int:
             f"with 'uv add --dev \"tempest-cli[tools]\"' — and retry.",
             err=True,
         )
-        return 127
+        return MISSING_TOOL_EXIT_CODE
     return subprocess.call([*argv, *args])
 
 
@@ -314,25 +341,212 @@ def run_mypy(target: str, *, config: TempestConfig | None = None) -> int:
     return _execute("mypy", [*flags, target])
 
 
-def run_pytest(target: str | None) -> int:
+def _shebang_interpreter(script: Path) -> list[str] | None:
+    """Read the interpreter a console script's shebang names.
+
+    Args:
+        script (Path): The console script (``.../bin/pytest``).
+
+    Returns:
+        list[str] | None: The argv prefix of that interpreter — the
+        Python path itself, or ``[env, python3]`` for an ``env`` shebang
+        — or ``None`` when the file has no usable shebang (a Windows
+        ``.exe`` launcher, a ``/bin/sh`` trampoline, an unreadable file).
+    """
+    try:
+        with script.open("rb") as handle:
+            first_line = handle.readline(4096)
+    except OSError:
+        return None
+    if not first_line.startswith(b"#!"):
+        return None
+    parts = first_line[2:].decode("utf-8", errors="replace").split()
+    if not parts:
+        return None
+    if Path(parts[0]).name == "env" and len(parts) > 1:
+        return parts
+    if Path(parts[0]).name.startswith("python"):
+        return [parts[0]]
+    return None
+
+
+def _pytest_interpreter(argv: list[str]) -> list[str] | None:
+    """Return the argv prefix of the Python that ``argv`` runs pytest under.
+
+    The ``--fast`` preflight has to ask *that* interpreter whether it can
+    import pytest-xdist. The CLI's own interpreter is the wrong one to
+    ask: under ``uv tool install`` or pipx the CLI lives in an
+    environment of its own, and with the ``uv run --with pytest``
+    fallback pytest runs in the project's environment plus an overlay.
+
+    Resolution, by the shape :func:`resolve_tool` returned:
+
+    - ``uv run --with pytest pytest`` → the same command with ``python``
+      in place of the final ``pytest``, so the probe sees the exact
+      environment the suite will;
+    - a script path → the interpreter its shebang names, else the
+      ``python`` sitting next to it (a virtualenv's ``bin``/``Scripts``).
+
+    Args:
+        argv (list[str]): The pytest argv prefix from :func:`resolve_tool`.
+
+    Returns:
+        list[str] | None: The interpreter argv prefix, or ``None`` when
+        it cannot be told — the caller then skips the preflight and lets
+        pytest report for itself.
+    """
+    if len(argv) > 1:
+        return [*argv[:-1], "python"]
+    script = Path(argv[0])
+    from_shebang = _shebang_interpreter(script)
+    if from_shebang is not None:
+        return from_shebang
+    for name in ("python", "python3", "python.exe"):
+        sibling = script.parent / name
+        if sibling.is_file():
+            return [str(sibling)]
+    return None
+
+
+def _module_available(interpreter: list[str], module: str) -> bool | None:
+    """Ask ``interpreter`` whether it can import ``module``.
+
+    Runs :func:`importlib.util.find_spec` inside that interpreter, which
+    locates the module without importing it.
+
+    Args:
+        interpreter (list[str]): The interpreter argv prefix.
+        module (str): The top-level import name.
+
+    Returns:
+        bool | None: True when the module resolves, False when it does
+        not, ``None`` when the probe itself could not run (spawn failure,
+        timeout, an exit code other than ``0``/``1``).
+    """
+    try:
+        completed = subprocess.run(
+            [*interpreter, "-c", _MODULE_PROBE_SOURCE, module],
+            capture_output=True,
+            timeout=MODULE_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    return None
+
+
+def _missing_xdist_code() -> int:
+    """Check that the environment pytest runs in can import pytest-xdist.
+
+    Without the plugin, ``pytest -n auto`` stops at argument parsing with
+    ``unrecognized arguments: -n`` — true, but it names neither the
+    missing package nor the way to get it. This preflight answers first,
+    in words.
+
+    An unknown answer is not a failure: when pytest cannot be resolved
+    (:func:`_execute` reports that with its own message) or its
+    interpreter cannot be told, the run proceeds and pytest speaks.
+
+    Returns:
+        int: ``0`` when the plugin is present or its presence cannot be
+        told; :data:`MISSING_TOOL_EXIT_CODE` after printing the fix when
+        it is absent.
+    """
+    argv = resolve_tool("pytest")
+    if argv is None:
+        return 0
+    interpreter = _pytest_interpreter(argv)
+    if interpreter is None:
+        return 0
+    if _module_available(interpreter, XDIST_MODULE) is not False:
+        return 0
+    typer.echo(
+        "error: --fast needs pytest-xdist, which is not installed in the "
+        f"environment pytest runs in ({' '.join(argv)}). Install it with "
+        "'uv add --dev pytest-xdist' — or a bundle that carries it, "
+        "'uv add --dev \"tempest-cli[tools]\"' or "
+        "'uv add --dev \"tempest-fastapi-sdk[tests]\"' — and retry, "
+        "or drop --fast to run the suite serially.",
+        err=True,
+    )
+    return MISSING_TOOL_EXIT_CODE
+
+
+def _pytest_args(target: str | None, *, fast: bool, workers: str) -> list[str]:
+    """Build the arguments handed to pytest.
+
+    Args:
+        target (str | None): Optional path filter, forwarded last.
+        fast (bool): When True, spread the suite with pytest-xdist.
+        workers (str): The ``-n`` value used when ``fast`` is True.
+
+    Returns:
+        list[str]: ``[target]`` for a serial run, or
+        ``["-n", workers, "-p", "no:cacheprovider", target]`` for a fast
+        one (``target`` omitted when ``None``).
+    """
+    args = ["-n", workers, "-p", "no:cacheprovider"] if fast else []
+    if target:
+        args.append(target)
+    return args
+
+
+def run_pytest(
+    target: str | None,
+    *,
+    fast: bool = False,
+    workers: str = DEFAULT_FAST_WORKERS,
+) -> int:
     """Invoke ``pytest`` with an optional target.
+
+    With ``fast=True`` the suite is spread across pytest-xdist workers:
+    ``-n <workers>`` plus ``-p no:cacheprovider``, since several workers
+    writing ``.pytest_cache`` at once is a race that buys nothing. The
+    cache is what ``--lf`` / ``--ff`` read, so those belong to serial
+    runs. Before spawning, the interpreter pytest runs under is asked
+    whether it can import pytest-xdist; when it cannot, the fix is
+    printed and nothing runs.
 
     Args:
         target (str | None): Optional pytest path filter. ``None`` runs
             the default test suite.
+        fast (bool): When True, run the suite in parallel with
+            pytest-xdist.
+        workers (str): Worker count for ``fast`` — an integer, ``auto``
+            (one per CPU core: physical when ``psutil`` is importable) or
+            ``logical``, exactly as ``pytest -n`` takes it. Ignored when
+            ``fast`` is False.
 
     Returns:
-        int: The pytest exit code.
+        int: The pytest exit code, or :data:`MISSING_TOOL_EXIT_CODE` when
+        pytest — or, with ``fast``, pytest-xdist — is absent.
     """
-    args = [target] if target else []
-    return _execute("pytest", args)
+    if fast:
+        code = _missing_xdist_code()
+        if code != 0:
+            return code
+    return _execute("pytest", _pytest_args(target, fast=fast, workers=workers))
 
 
-def run_full_check(target: str, *, config: TempestConfig | None = None) -> int:
+def run_full_check(
+    target: str,
+    *,
+    config: TempestConfig | None = None,
+    fast: bool = False,
+    workers: str = DEFAULT_FAST_WORKERS,
+) -> int:
     """Run the entire quality gate sequentially.
 
     Order: ``ruff check`` → ``ruff format --check`` → ``mypy`` → ``pytest``.
     Stops at the first non-zero exit code so failures surface fast.
+
+    With ``fast=True`` the pytest step runs the way :func:`run_pytest`
+    runs it with ``fast=True``. The pytest-xdist preflight happens
+    *before* the first step, so a missing plugin fails in a second
+    instead of after lint and mypy have already run.
 
     Args:
         target (str): The path inspected by ruff/mypy. Pytest always runs
@@ -340,16 +554,23 @@ def run_full_check(target: str, *, config: TempestConfig | None = None) -> int:
         config (TempestConfig | None): Resolved ``[tool.tempest]`` config
             controlling the ANN rules and mypy flags layered onto the
             ruff/mypy steps. When ``None`` the default level is used.
+        fast (bool): When True, run the pytest step in parallel with
+            pytest-xdist.
+        workers (str): The ``pytest -n`` value used when ``fast`` is True.
 
     Returns:
         int: The first non-zero exit code, or ``0`` when every gate passed.
     """
+    if fast:
+        code = _missing_xdist_code()
+        if code != 0:
+            return code
     resolved = config or TempestConfig()
     steps: list[tuple[str, list[str]]] = [
         ("ruff", ["check", *_ruff_ann_args(resolved), target]),
         ("ruff", ["format", "--check", target]),
         ("mypy", [*resolved.mypy_flags(), target]),
-        ("pytest", []),
+        ("pytest", _pytest_args(None, fast=fast, workers=workers)),
     ]
     for executable, args in steps:
         typer.echo(f"$ {executable} {' '.join(args)}", err=True)
@@ -360,6 +581,9 @@ def run_full_check(target: str, *, config: TempestConfig | None = None) -> int:
 
 
 __all__: list[str] = [
+    "DEFAULT_FAST_WORKERS",
+    "MISSING_TOOL_EXIT_CODE",
+    "XDIST_MODULE",
     "resolve_tool",
     "run_full_check",
     "run_mypy",

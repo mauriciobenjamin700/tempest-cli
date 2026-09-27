@@ -3,6 +3,31 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
+## [Unreleased]
+
+### Added
+
+- **`test --fast` and `check --fast`: the suite in parallel.** Runs
+  `pytest -n <workers> -p no:cacheprovider [target]` with pytest-xdist;
+  `--workers` / `-w` takes what `pytest -n` takes (an integer, `auto` —
+  the default — or `logical`) and is a usage error without `--fast`. The
+  target is forwarded and pytest's exit code comes back untranslated. It
+  is a flag, not a subcommand, because `test fast` keeps meaning the
+  `fast/` folder. [Details](commands.md#the-suite-in-parallel-fast).
+- **A missing pytest-xdist is a sentence, not `unrecognized arguments:
+  -n`.** `--fast` asks the interpreter that will run pytest whether it
+  can import `xdist`; when it cannot, the message names the package and
+  the extras (`tempest-cli[tools]`, `tempest-fastapi-sdk[tests]`) and the
+  exit code is 127, with no traceback. Under `check --fast` the check
+  comes before the first step.
+- **`run_pytest` / `run_full_check` gain `fast=` and `workers=`**,
+  keyword-only, serial by default.
+
+### Changed
+
+- **`[tools]` now carries `pytest-xdist>=3.8.0`.** No upper bound in its
+  `requires-dist` (`execnet>=2.1`, `pytest>=7.0.0`).
+
 ## [0.3.0] — 2026-08-15
 
 ### Changed
