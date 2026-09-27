@@ -42,8 +42,13 @@ suite — those versions are the project's call. Add them yourself, or
 take the bundle:
 
 ```bash
-uv add --dev "tempest-cli[tools]"   # mypy + pytest
+uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
+
+`pytest-xdist` is what [`test --fast`](commands.md#the-suite-in-parallel-fast)
+uses to run the suite in parallel. Its `requires-dist` (`execnet>=2.1`,
+`pytest>=7.0.0`) carries no upper bound, so it tightens nobody's
+resolution.
 
 !!! question "Why ruff is a dependency and the other two are not"
     Six of the eight commands are ruff — a `tempest-cli` without ruff is

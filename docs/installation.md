@@ -43,8 +43,13 @@ e a sua suíte — versão dessas duas é decisão do projeto. Adicione você
 mesmo, ou pegue o pacote pronto:
 
 ```bash
-uv add --dev "tempest-cli[tools]"   # mypy + pytest
+uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
+
+O `pytest-xdist` é o que o [`test --fast`](commands.md#a-suite-em-paralelo-fast)
+usa para rodar a suíte em paralelo. O `requires-dist` dele
+(`execnet>=2.1`, `pytest>=7.0.0`) não tem teto nenhum, então ele não
+aperta a resolução de ninguém.
 
 !!! question "Por que o ruff é dependência e as outras duas não"
     Seis dos oito comandos são ruff — um `tempest-cli` sem ruff é um

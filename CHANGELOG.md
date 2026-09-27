@@ -5,6 +5,59 @@ All notable changes to **tempest-cli** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`test --fast` and `check --fast`: the suite in parallel.** `--fast`
+  runs pytest as `pytest -n <workers> -p no:cacheprovider [target]`, with
+  pytest-xdist spreading the suite across the cores; `--workers` / `-w`
+  takes what `pytest -n` takes (an integer, `auto` — the default — or
+  `logical`) and is a usage error (exit 2) without `--fast`. The cache
+  plugin is off because several workers writing `.pytest_cache` at once
+  is a race that buys nothing. The target is forwarded and pytest's exit
+  code comes straight back, as in the serial run. It is a flag rather
+  than a `test fast` subcommand because `test` already takes a
+  positional path: `test fast` keeps meaning the `fast/` folder.
+  Requested in mauriciobenjamin700/tempest-fastapi-sdk#328.
+
+  Measured on a machine with 6 physical cores / 12 threads. On this
+  package's own suite (100 tests, warm environment, three runs each)
+  `tempest-cli test` took 2.2 s and `tempest-cli test --fast` 1.6–1.7 s
+  (12 workers: no `psutil` here, so `auto` counts logical CPUs) — worker
+  start-up is most of the fast run at this size. On the
+  tempest-fastapi-sdk suite (10 218 tests, one run each, same
+  invocation), pytest reported 2127 s serial and 411 s with `--fast`
+  (`auto` → 6 workers, since `psutil` is installed there), about 5.2x;
+  both runs ended with the same 10 failures, all from `ruff` being a dead
+  pyenv shim on that `PATH`.
+
+  `auto` is pytest-xdist's rule, not ours: physical cores when `psutil`
+  is importable, logical CPUs otherwise. `-w logical` asks for the
+  threads explicitly.
+
+- **A missing pytest-xdist is a sentence, not `unrecognized arguments:
+  -n`.** Before spawning, `--fast` asks the interpreter pytest will run
+  under — read from the pytest script's shebang, its sibling `python`,
+  or the same `uv run --with pytest` overlay — whether it can import
+  `xdist`. When it cannot, the message names `pytest-xdist`,
+  `tempest-cli[tools]` and `tempest-fastapi-sdk[tests]`, and the exit code
+  is 127, with no traceback. `check --fast` makes that check before its
+  first step. A probe that cannot run at all is not taken as "missing":
+  the run proceeds and pytest reports for itself.
+
+- **`run_pytest(..., fast=, workers=)` and `run_full_check(..., fast=,
+  workers=)`** for library callers — keyword-only, defaulting to the
+  serial run, so every existing call is unchanged. `DEFAULT_FAST_WORKERS`,
+  `XDIST_MODULE` and `MISSING_TOOL_EXIT_CODE` are exported from
+  `tempest_cli.lint`.
+
+### Changed
+
+- **`[tools]` now carries `pytest-xdist>=3.8.0`** next to mypy and pytest,
+  so the bundle is enough for `--fast`. Its `requires-dist`
+  (`execnet>=2.1`, `pytest>=7.0.0`) has no upper bound.
+
 ## [0.3.0] — 2026-08-15
 
 ### Changed

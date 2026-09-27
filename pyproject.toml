@@ -46,10 +46,13 @@ dependencies = [
 # changes which errors a codebase reports, and pytest has to match the
 # plugins and the test suite it runs — both are the project's call, not
 # this package's. `[tools]` is the convenience bundle for whoever would
-# rather pin them here than in their own dev group.
+# rather pin them here than in their own dev group. `pytest-xdist` rides
+# along for `test --fast` / `check --fast`; its requires-dist
+# (`execnet>=2.1`, `pytest>=7.0.0`) carries no upper bound.
 tools = [
     "mypy>=1.13.0",
     "pytest>=8.3.3",
+    "pytest-xdist>=3.8.0",
 ]
 
 [project.urls]
@@ -82,6 +85,7 @@ dev = [
     "mypy>=1.13.0",
     "pytest>=8.3.3",
     "pytest-cov>=6.0.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.8.0",
 ]
 docs = [

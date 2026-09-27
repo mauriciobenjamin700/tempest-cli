@@ -30,6 +30,7 @@ run_ruff_fix("src", unsafe=False, config=strict)
 run_ruff_format("src", check=True)        # --check: writes nothing
 run_mypy("src", config=strict)
 run_pytest("tests/unit")
+run_pytest("tests/unit", fast=True, workers="4")   # pytest-xdist: -n 4
 ```
 
 `load_tempest_config(start)` walks up from `start` (the cwd by default)
