@@ -4,6 +4,19 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
+## [Unreleased]
+
+### Adicionado
+
+- **`extra_steps`: regras do framework dentro do `check`.** O novo
+  `CheckStep(name, run)` é um passo que o `check` roda depois do `mypy` e
+  antes do `pytest`; `run` recebe o alvo e devolve um código de saída.
+  `run_full_check(..., extra_steps=)` e
+  `register_commands(app, *, extra_steps=)` aceitam a lista — vazia por
+  padrão, então nada muda para quem não passa. O primeiro código diferente
+  de `0` para o gate, com ou sem `--fast`.
+  [Detalhes](library.md#acrescentar-passos-ao-check).
+
 ## [0.4.0] — 2026-09-27
 
 ### Adicionado

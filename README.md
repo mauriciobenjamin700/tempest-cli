@@ -43,7 +43,7 @@ remembered to pass.
 | `tempest-cli fmt-check` | `ruff format --check` (read-only) |
 | `tempest-cli type` | `mypy` |
 | `tempest-cli test` | `pytest` (`--fast` spreads it across cores with pytest-xdist: `-n auto -p no:cacheprovider`, `-w N` to choose) |
-| `tempest-cli check` | all four, in order, stopping at the first failure (`--fast` runs the test step in parallel) |
+| `tempest-cli check` | all four, in order, stopping at the first failure (`--fast` runs the test step in parallel; a host CLI can add steps between `mypy` and `pytest`) |
 | `tempest-cli pr-prompt` | builds the prompt that makes an AI write this branch's PR description |
 
 Every command takes an optional path (`tempest-cli lint src/`) and
@@ -117,6 +117,28 @@ from tempest_cli.main import register_commands
 cli: typer.Typer = typer.Typer(name="mytool")
 register_commands(cli)
 ```
+
+A framework that wants its own rules in `check` passes them as
+`CheckStep`s — they run after `mypy` and before `pytest`, and the first
+non-zero exit code stops the gate:
+
+```python
+import typer
+
+from tempest_cli import CheckStep
+from tempest_cli.main import register_commands
+
+
+def layers(target: str) -> int:
+    """Return 0 when every module under ``target`` follows the layering."""
+    return 0
+
+
+cli: typer.Typer = typer.Typer(name="mytool")
+register_commands(cli, extra_steps=[CheckStep(name="layers", run=layers)])
+```
+
+`run_full_check(".", extra_steps=[...])` takes the same list.
 
 ## Where the tools come from
 

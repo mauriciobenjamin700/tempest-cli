@@ -30,6 +30,11 @@ config = load_tempest_config()
 exit_code = run_full_check(".", config=config)
 ```
 
+A framework that wants its own rules in ``check`` passes them as
+:class:`tempest_cli.CheckStep` values — ``extra_steps`` on
+:func:`run_full_check` and on :func:`tempest_cli.main.register_commands`
+— and they run after ``mypy``, before ``pytest``.
+
 And :func:`tempest_cli.main.register_commands` mounts the whole gate onto
 an existing :class:`typer.Typer`, so another CLI can expose these
 commands under its own name without copying them.
@@ -50,12 +55,14 @@ from tempest_cli.lint import run_ruff_format as run_ruff_format
 from tempest_cli.pr_prompt import GitError as GitError
 from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
+from tempest_cli.steps import CheckStep as CheckStep
 
 __version__: str = "0.4.0"
 """Installed package version."""
 
 __all__: list[str] = [
     "DEFAULT_TYPING_STRICTNESS",
+    "CheckStep",
     "GitError",
     "PromptLanguage",
     "TempestConfig",

@@ -11,6 +11,7 @@ under its own name without copying a single command body: one call, and
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, cast, get_args
 
@@ -19,6 +20,7 @@ import typer
 from tempest_cli import lint as lint_module
 from tempest_cli import pr_prompt as pr_prompt_module
 from tempest_cli.config import TempestConfig, TypingStrictness, load_tempest_config
+from tempest_cli.steps import CheckStep
 
 
 def _strictness_option() -> typer.models.OptionInfo:
@@ -152,12 +154,21 @@ def _resolve_workers(
     )
 
 
-def register_commands(app: typer.Typer) -> None:
+def register_commands(
+    app: typer.Typer,
+    *,
+    extra_steps: Sequence[CheckStep] = (),
+) -> None:
     """Register the quality gate on an existing Typer application.
 
     Args:
         app (typer.Typer): The application to extend. Its own name and
             help text are left untouched; only commands are added.
+        extra_steps (Sequence[CheckStep]): Steps the ``check`` command
+            runs after ``mypy`` and before ``pytest``, in every variant
+            (``--fast`` included). This is how a framework adds its own
+            rules to the gate without this package knowing about it.
+            Empty by default.
 
     Example:
         ```python
@@ -167,6 +178,23 @@ def register_commands(app: typer.Typer) -> None:
 
         cli: typer.Typer = typer.Typer(name="mytool")
         register_commands(cli)
+        ```
+
+        With a step of its own in ``check``:
+
+        ```python
+        import typer
+
+        from tempest_cli import CheckStep
+        from tempest_cli.main import register_commands
+
+
+        def layers(target: str) -> int:
+            return 0
+
+
+        cli: typer.Typer = typer.Typer(name="mytool")
+        register_commands(cli, extra_steps=[CheckStep(name="layers", run=layers)])
         ```
     """
 
@@ -287,7 +315,8 @@ def register_commands(app: typer.Typer) -> None:
         """Run the full quality gate (lint + fmt-check + type + test).
 
         ``--fast`` runs the test step as ``test --fast`` does, with the
-        pytest-xdist check made before the first step.
+        pytest-xdist check made before the first step. Steps the host CLI
+        registered run after type and before test.
         """
         config = _resolve_config(target, strictness)
         resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
@@ -297,6 +326,7 @@ def register_commands(app: typer.Typer) -> None:
                 config=config,
                 fast=fast,
                 workers=resolved_workers,
+                extra_steps=extra_steps,
             )
         )
 
