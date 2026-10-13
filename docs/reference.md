@@ -35,6 +35,12 @@ Gerada a partir das docstrings do pacote via
 
 ---
 
+## Passos extras
+
+::: tempest_cli.steps.CheckStep
+
+---
+
 ## Prompt de PR
 
 ::: tempest_cli.pr_prompt.generate_pr_prompt

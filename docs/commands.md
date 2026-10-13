@@ -11,7 +11,7 @@ saída da ferramenta por baixo.
 | `fmt-check` | `ruff format --check` (só leitura) |
 | `type` | `mypy` |
 | `test` | `pytest` |
-| `check` | os quatro acima, em ordem, parando na primeira falha |
+| `check` | os quatro acima, em ordem, parando na primeira falha (uma CLI que monta o gate pode [acrescentar passos](library.md#acrescentar-passos-ao-check) entre o `mypy` e o `pytest`) |
 | `pr-prompt` | monta o prompt da descrição do PR — [página própria](pr-prompt.md) |
 
 !!! tip "`tc` é a forma curta"

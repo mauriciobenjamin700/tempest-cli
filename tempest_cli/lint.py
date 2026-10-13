@@ -6,11 +6,13 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import typer
 
 from tempest_cli.config import TempestConfig
+from tempest_cli.steps import CheckStep
 
 SHIM_PROBE_TIMEOUT_SECONDS = 20.0
 """Seconds allowed for the ``<tool> --version`` probe of a version-manager shim."""
@@ -531,17 +533,51 @@ def run_pytest(
     return _execute("pytest", _pytest_args(target, fast=fast, workers=workers))
 
 
+def _tool_step(executable: str, args: list[str]) -> tuple[str, Callable[[], int]]:
+    """Pair a tool invocation with the label ``check`` echoes for it.
+
+    Args:
+        executable (str): The tool to run (``ruff``, ``mypy``, ``pytest``).
+        args (list[str]): The arguments handed to it.
+
+    Returns:
+        tuple[str, Callable[[], int]]: ``("<executable> <args>", thunk)``,
+        where calling the thunk runs the tool and returns its exit code.
+    """
+    return f"{executable} {' '.join(args)}", lambda: _execute(executable, args)
+
+
+def _extra_step(step: CheckStep, target: str) -> tuple[str, Callable[[], int]]:
+    """Pair a caller-supplied step with the label ``check`` echoes for it.
+
+    Args:
+        step (CheckStep): The step to run.
+        target (str): The path handed to ``step.run``.
+
+    Returns:
+        tuple[str, Callable[[], int]]: ``(step.name, thunk)``, where
+        calling the thunk runs ``step.run(target)``.
+    """
+    return step.name, lambda: step.run(target)
+
+
 def run_full_check(
     target: str,
     *,
     config: TempestConfig | None = None,
     fast: bool = False,
     workers: str = DEFAULT_FAST_WORKERS,
+    extra_steps: Sequence[CheckStep] = (),
 ) -> int:
     """Run the entire quality gate sequentially.
 
-    Order: ``ruff check`` → ``ruff format --check`` → ``mypy`` → ``pytest``.
-    Stops at the first non-zero exit code so failures surface fast.
+    Order: ``ruff check`` → ``ruff format --check`` → ``mypy`` → each of
+    ``extra_steps``, in the order given → ``pytest``. Every step is
+    announced on stderr as ``$ <command line>`` (``$ <name>`` for an
+    extra step) and the gate stops at the first non-zero exit code, so
+    failures surface fast. The extra steps sit before ``pytest`` because
+    they are static checks: a layering rule should fail in a second, not
+    after the whole suite.
 
     With ``fast=True`` the pytest step runs the way :func:`run_pytest`
     runs it with ``fast=True``. The pytest-xdist preflight happens
@@ -549,32 +585,38 @@ def run_full_check(
     instead of after lint and mypy have already run.
 
     Args:
-        target (str): The path inspected by ruff/mypy. Pytest always runs
-            against the project's configured ``testpaths``.
+        target (str): The path inspected by ruff/mypy and handed to every
+            extra step. Pytest always runs against the project's
+            configured ``testpaths``.
         config (TempestConfig | None): Resolved ``[tool.tempest]`` config
             controlling the ANN rules and mypy flags layered onto the
             ruff/mypy steps. When ``None`` the default level is used.
         fast (bool): When True, run the pytest step in parallel with
             pytest-xdist.
         workers (str): The ``pytest -n`` value used when ``fast`` is True.
+        extra_steps (Sequence[CheckStep]): Caller-supplied steps run
+            after ``mypy`` and before ``pytest``. Empty by default, which
+            leaves the gate exactly as it was without them.
 
     Returns:
-        int: The first non-zero exit code, or ``0`` when every gate passed.
+        int: The first non-zero exit code — a tool's or an extra step's —
+        or ``0`` when every gate passed.
     """
     if fast:
         code = _missing_xdist_code()
         if code != 0:
             return code
     resolved = config or TempestConfig()
-    steps: list[tuple[str, list[str]]] = [
-        ("ruff", ["check", *_ruff_ann_args(resolved), target]),
-        ("ruff", ["format", "--check", target]),
-        ("mypy", [*resolved.mypy_flags(), target]),
-        ("pytest", _pytest_args(None, fast=fast, workers=workers)),
+    steps: list[tuple[str, Callable[[], int]]] = [
+        _tool_step("ruff", ["check", *_ruff_ann_args(resolved), target]),
+        _tool_step("ruff", ["format", "--check", target]),
+        _tool_step("mypy", [*resolved.mypy_flags(), target]),
+        *(_extra_step(step, target) for step in extra_steps),
+        _tool_step("pytest", _pytest_args(None, fast=fast, workers=workers)),
     ]
-    for executable, args in steps:
-        typer.echo(f"$ {executable} {' '.join(args)}", err=True)
-        code = _execute(executable, args)
+    for label, run in steps:
+        typer.echo(f"$ {label}", err=True)
+        code = run()
         if code != 0:
             return code
     return 0

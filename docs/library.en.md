@@ -67,6 +67,100 @@ behavior and the same `[tool.tempest]` reading.
     app. That is why the two never diverge: there is one
     implementation.
 
+## Adding steps to `check`
+
+`tempest-cli` knows nothing about any framework, on purpose. The
+framework does, though: "every service inherits `BaseService`" is a rule
+of whoever lays out the project, not of whoever runs ruff. `CheckStep`
+is the seam — you write the rule, `check` runs it.
+
+A `CheckStep` has two fields: `name`, the label `check` echoes as
+`$ <name>` on stderr, and `run`, a function that takes the `check`
+target (the path from the command line, `.` by default) and returns an
+exit code — `0` means it passed.
+
+```python
+from pathlib import Path
+
+import typer
+
+from tempest_cli import CheckStep
+from tempest_cli.main import register_commands
+
+
+def no_print(target: str) -> int:
+    """Fail when a module under ``target`` calls ``print``."""
+    offenders: list[str] = [
+        f"{path}:{number}: use logging instead of print()"
+        for path in sorted(Path(target).rglob("*.py"))
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if line.lstrip().startswith("print(")
+    ]
+    for offender in offenders:
+        typer.echo(offender, err=True)
+    return 1 if offenders else 0
+
+
+cli: typer.Typer = typer.Typer(name="mytool")
+
+
+@cli.command("deploy")
+def deploy() -> None:
+    """A command the tool already had."""
+
+
+register_commands(cli, extra_steps=[CheckStep(name="no-print", run=no_print)])
+
+if __name__ == "__main__":
+    cli()
+```
+
+With a module `pkg/a.py` that calls `print("x")`:
+
+```console
+$ python mytool.py check pkg
+$ ruff check --extend-select ANN001,ANN201,ANN202,ANN205,ANN206 pkg
+All checks passed!
+$ ruff format --check pkg
+1 file already formatted
+$ mypy --disallow-untyped-defs --disallow-incomplete-defs pkg
+Success: no issues found in 1 source file
+$ no-print
+pkg/a.py:2: use logging instead of print()
+$ echo $?
+1
+```
+
+The order is `ruff check` → `ruff format --check` → `mypy` → the extra
+steps, in list order → `pytest`. An extra step is a static check: it
+sits before the suite so it fails in a second, not after it. The
+contract is the built-in steps' — the first non-zero code stops the gate
+and becomes `check`'s exit code, with or without `--fast`.
+
+!!! tip "The message is yours"
+    `check` only echoes the name. What the step prints is what the user
+    reads, so name the file, the line and the fix — as `no-print` does
+    above.
+
+Without the CLI, the same holds for `run_full_check`:
+
+```python
+from tempest_cli import CheckStep, run_full_check
+
+
+def always_passes(target: str) -> int:
+    """A step that accepts any target."""
+    return 0
+
+
+exit_code: int = run_full_check(
+    ".", extra_steps=[CheckStep(name="always-passes", run=always_passes)]
+)
+```
+
+`extra_steps` is empty by default: without it, the gate is exactly what
+it was.
+
 ## Generating the PR prompt without the CLI
 
 ```python
@@ -93,5 +187,7 @@ resolve.
 
 - Runners, config and the prompt generator are all importable.
 - `register_commands(app)` mounts the eight commands on any `Typer`.
+- `extra_steps=[CheckStep(...)]` puts your own rules in `check`, after
+  `mypy` and before `pytest`.
 - Exit codes are the tools', identical from the CLI and from a direct
   call.

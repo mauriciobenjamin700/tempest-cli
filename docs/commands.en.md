@@ -11,7 +11,7 @@ tool's exit code.
 | `fmt-check` | `ruff format --check` (read-only) |
 | `type` | `mypy` |
 | `test` | `pytest` |
-| `check` | the four above, in order, stopping at the first failure |
+| `check` | the four above, in order, stopping at the first failure (a CLI that mounts the gate can [add steps](library.md#adding-steps-to-check) between `mypy` and `pytest`) |
 | `pr-prompt` | builds the PR-description prompt — [its own page](pr-prompt.md) |
 
 !!! tip "`tc` is the short form"

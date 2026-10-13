@@ -5,6 +5,25 @@ All notable changes to **tempest-cli** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`extra_steps`: a framework's own rules inside `check`.** The new
+  `CheckStep(name, run)` (frozen dataclass, exported from `tempest_cli`)
+  is a step `check` runs after `mypy` and before `pytest`: `run` receives
+  the `check` target and returns an exit code. `run_full_check(...,
+  extra_steps=)` and `register_commands(app, *, extra_steps=)` take a
+  sequence of them — keyword-only, empty by default, so every existing
+  call runs the same four steps as before. Each extra step is echoed as
+  `$ <name>` on stderr, runs in list order, and the first non-zero code
+  stops the gate and becomes its exit code, with or without `--fast`.
+  They sit before `pytest` because they are static checks that should
+  fail in a second, not after the suite. Requested in
+  mauriciobenjamin700/tempest-fastapi-sdk#520, where the SDK adds its
+  service-layer rules to `tempest check` without this package learning
+  about any framework.
+
 ## [0.4.0] — 2026-09-27
 
 ### Added
