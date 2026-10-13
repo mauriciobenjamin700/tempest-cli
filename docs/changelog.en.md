@@ -3,7 +3,7 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
-## [Unreleased]
+## [0.5.0] — 2026-10-13
 
 ### Added
 
