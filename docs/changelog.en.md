@@ -13,6 +13,11 @@ The full history lives in the repository's
   summary separates what has no autofix from what `--unsafe` would fix.
   The exit code is unchanged.
   [Details](commands.md#an-e501-ruff-format-cannot-fix).
+- **`fix` shortens the long comments and strings the formatter leaves
+  alone.** A comment is wrapped at the limit and a string is split into
+  concatenated parts; each edit is kept only when the file's AST is
+  identical before and after. Pragmas, f-strings, triple quotes and long
+  words are left out and explained. On by default.
 - **`fix` reports on the formatted file.** The passes are now
   `ruff check --fix-only`, `ruff format` and `ruff check`; before, the
   report and the exit code came from the pass that ran before the

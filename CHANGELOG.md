@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolve it, then splits the residual violations into those with no
   autofix and those `fix --unsafe` would fix. The exit code is unchanged:
   CI still fails on them. Closes #3.
+- **`fix` shortens the long comments and strings the formatter leaves
+  alone.** After `ruff format`, each E501 that is a comment is wrapped at
+  the limit (a trailing one moves above its line) and each that is a
+  plain string literal is split at its spaces into implicitly
+  concatenated parts inside parentheses; the touched files are formatted
+  again. Every edit is kept only when the file's AST is identical before
+  and after, so the program cannot change. Tool pragmas (`noqa`,
+  `type: ignore`, `fmt:`, …), f-strings, triple-quoted strings and words
+  longer than a line are left alone and explained instead. On by
+  default: neither rewrite changes behavior.
 - **`fix` reports on the formatted file.** The passes are now
   `ruff check --fix-only`, `ruff format`, then `ruff check`; before, the
   report and the exit code came from the lint pass that ran *before* the
