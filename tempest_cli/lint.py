@@ -11,6 +11,7 @@ from pathlib import Path
 
 import typer
 
+from tempest_cli import residuals
 from tempest_cli.config import TempestConfig
 from tempest_cli.steps import CheckStep
 
@@ -261,6 +262,32 @@ def run_ruff_check(target: str, *, config: TempestConfig | None = None) -> int:
     return _execute("ruff", ["check", *_ruff_ann_args(config), target])
 
 
+def _capture(executable: str, args: list[str]) -> str | None:
+    """Run ``executable args`` silently and return what it wrote to stdout.
+
+    Args:
+        executable (str): The command to run.
+        args (list[str]): Extra arguments to forward.
+
+    Returns:
+        str | None: The child's stdout, or ``None`` when the tool cannot
+        be found or started.
+    """
+    argv = resolve_tool(executable)
+    if argv is None:
+        return None
+    try:
+        completed = subprocess.run(
+            [*argv, *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return completed.stdout
+
+
 def run_ruff_fix(
     target: str,
     *,
@@ -269,23 +296,27 @@ def run_ruff_fix(
 ) -> int:
     """Apply every automatic fix ruff can perform, then format the target.
 
-    Runs in two passes so the second one sees the rewritten file:
+    Runs three passes, so the report describes the file the formatter
+    left behind rather than the one it started from:
 
-    1. ``ruff check --fix [--unsafe-fixes] <target>`` — autofix imports
-       (sort + dedupe), remove unused imports, normalize string quotes,
-       drop trailing whitespace, fix the rest of the lint rules that
-       have safe (or, with ``unsafe=True``, also unsafe) autofixers.
+    1. ``ruff check --fix-only [--unsafe-fixes] <target>`` — autofix
+       imports (sort + dedupe), remove unused imports, normalize string
+       quotes, drop trailing whitespace, fix the rest of the lint rules
+       that have safe (or, with ``unsafe=True``, also unsafe) autofixers.
+       ``--fix-only`` keeps it from reporting the leftovers, which the
+       formatter may still resolve.
     2. ``ruff format <target>`` — normalize indentation, line length,
        blank lines and trailing newlines.
+    3. ``ruff check <target>`` — the report of what is left, and the exit
+       code of the command.
 
-    Both passes always run. ``ruff check --fix`` exits non-zero whenever
-    *any* residual violation remains that it cannot autofix (an
-    over-length string/comment, an undefined name, etc.) — even though
-    it already rewrote everything it could. Short-circuiting on that
-    exit code would skip ``ruff format`` entirely, leaving the file
-    un-wrapped and its extra blank lines intact. So the formatter runs
-    unconditionally; the lint exit code is surfaced afterwards so CI
-    still fails on the leftover issues.
+    When the third pass fails, ruff's JSON report of the same target is
+    read to explain the leftovers (see :mod:`tempest_cli.residuals`): an
+    E501 that survived ``ruff format`` is one the formatter has nowhere
+    to break — a dotted name, a string, a comment — and is named as such
+    with the action that does resolve it, and the residual violations
+    are split into those with no autofix and those ``--unsafe`` would
+    fix. The exit code is unaffected, so CI still fails on them.
 
     Args:
         target (str): The path passed verbatim to ruff.
@@ -293,19 +324,31 @@ def run_ruff_fix(
             applies the fixes it would otherwise leave alone.
         config (TempestConfig | None): Resolved ``[tool.tempest]`` config
             controlling the typing-strictness ANN rules layered onto the
-            fix pass. When ``None`` the default level is used.
+            fix and report passes. When ``None`` the default level is used.
 
     Returns:
-        int: ``0`` when both passes succeed with nothing left to fix;
-        otherwise the lint pass exit code (residual violations), or the
-        format pass exit code when the lint pass was clean.
+        int: ``0`` when nothing is left to fix; otherwise the report pass
+        exit code (residual violations), or the format pass exit code
+        when the report was clean. ``127`` when ruff cannot be found.
     """
-    check_args = ["check", "--fix", *_ruff_ann_args(config)]
+    ann_args = _ruff_ann_args(config)
+    fix_args = ["check", "--fix-only", *ann_args]
     if unsafe:
-        check_args.append("--unsafe-fixes")
-    check_args.append(target)
-    check_code = _execute("ruff", check_args)
+        fix_args.append("--unsafe-fixes")
+    fix_args.append(target)
+    fix_code = _execute("ruff", fix_args)
+    if fix_code == MISSING_TOOL_EXIT_CODE:
+        return fix_code
     format_code = _execute("ruff", ["format", target])
+    check_code = _execute("ruff", ["check", *ann_args, target])
+    if check_code:
+        report = _capture(
+            "ruff",
+            ["check", *ann_args, "--output-format", "json", "--exit-zero", target],
+        )
+        found = residuals.collect_residuals(report) if report is not None else None
+        if found is not None:
+            typer.echo(residuals.render_residuals(found), err=True, nl=False)
     return check_code or format_code
 
 
