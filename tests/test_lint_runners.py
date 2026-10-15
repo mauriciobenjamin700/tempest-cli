@@ -138,11 +138,12 @@ def test_lenient_adds_no_ann_rules(calls: list[list[str]]) -> None:
     assert "--extend-select" not in calls[0]
 
 
-def test_ruff_fix_runs_check_then_format(calls: list[list[str]]) -> None:
+def test_ruff_fix_fixes_formats_then_reports(calls: list[list[str]]) -> None:
     lint.run_ruff_fix("src", unsafe=False, config=TempestConfig())
-    assert [argv[1] for argv in calls] == ["check", "format"]
-    assert "--fix" in calls[0]
+    assert [argv[1] for argv in calls] == ["check", "format", "check"]
+    assert "--fix-only" in calls[0]
     assert "--unsafe-fixes" not in calls[0]
+    assert "--fix-only" not in calls[2]
 
 
 def test_unsafe_opts_into_the_risky_autofixes(calls: list[list[str]]) -> None:

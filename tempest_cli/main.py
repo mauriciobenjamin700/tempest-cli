@@ -231,10 +231,15 @@ def register_commands(
     ) -> None:
         """Apply every ruff autofix + format the target in one pass.
 
-        Equivalent to running ``ruff check --fix`` followed by ``ruff
-        format``: sorts and dedupes imports, drops unused imports,
-        normalizes string quotes, removes trailing whitespace, normalizes
-        indentation, line length and blank lines.
+        Runs ``ruff check --fix-only``, ``ruff format``, then ``ruff
+        check`` to report what is left: sorts and dedupes imports, drops
+        unused imports, normalizes string quotes, removes trailing
+        whitespace, normalizes indentation, line length and blank lines.
+
+        A line still too long after formatting is one ruff format has
+        nowhere to break (a dotted name, a string, a comment); each is
+        named with the action that resolves it, and the leftovers are
+        split into those with no autofix and those --unsafe would fix.
         """
         config = _resolve_config(target, strictness)
         raise typer.Exit(lint_module.run_ruff_fix(target, unsafe=unsafe, config=config))

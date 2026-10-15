@@ -3,6 +3,21 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
+## [0.5.1] — 2026-10-15
+
+### Fixed
+
+- **`fix` explains the E501 the formatter cannot resolve.** A line still
+  too long after `ruff format` (a dotted name, a string, a comment) comes
+  out with its token, its kind and the action that resolves it, and the
+  summary separates what has no autofix from what `--unsafe` would fix.
+  The exit code is unchanged.
+  [Details](commands.md#an-e501-ruff-format-cannot-fix).
+- **`fix` reports on the formatted file.** The passes are now
+  `ruff check --fix-only`, `ruff format` and `ruff check`; before, the
+  report and the exit code came from the pass that ran before the
+  formatter.
+
 ## [0.5.0] — 2026-10-13
 
 ### Added

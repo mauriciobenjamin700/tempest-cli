@@ -5,6 +5,26 @@ All notable changes to **tempest-cli** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-10-15
+
+### Fixed
+
+- **`fix` explains the E501 the formatter cannot resolve.** A line still
+  too long after `ruff format` is one the formatter has nowhere to break
+  — a dotted name (it never splits one, and drops parentheses that do not
+  make the line fit), a string literal, a comment — but the bare
+  `Line too long (94 > 79)` read as if `line-length` were being ignored.
+  `fix` now reads ruff's JSON report of the leftovers and names each such
+  line with the overflowing token, its kind and the action that does
+  resolve it, then splits the residual violations into those with no
+  autofix and those `fix --unsafe` would fix. The exit code is unchanged:
+  CI still fails on them. Closes #3.
+- **`fix` reports on the formatted file.** The passes are now
+  `ruff check --fix-only`, `ruff format`, then `ruff check`; before, the
+  report and the exit code came from the lint pass that ran *before* the
+  formatter, so a violation the formatter went on to resolve still showed
+  up and still failed the command.
+
 ## [0.5.0] — 2026-10-13
 
 ### Added

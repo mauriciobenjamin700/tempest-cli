@@ -38,7 +38,7 @@ remembered to pass.
 | Command | Runs |
 | --- | --- |
 | `tempest-cli lint` | `ruff check` |
-| `tempest-cli fix` | `ruff check --fix` then `ruff format` (`--unsafe` for the risky autofixes) |
+| `tempest-cli fix` | `ruff check --fix-only`, `ruff format`, then a final `ruff check` that explains any line the formatter cannot break (`--unsafe` for the risky autofixes) |
 | `tempest-cli format` | `ruff format` (writes) |
 | `tempest-cli fmt-check` | `ruff format --check` (read-only) |
 | `tempest-cli type` | `mypy` |

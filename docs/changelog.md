@@ -4,6 +4,19 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
+## [0.5.1] — 2026-10-15
+
+### Corrigido
+
+- **O `fix` explica o E501 que o formatador não resolve.** Linha ainda
+  longa depois do `ruff format` (nome pontuado, string, comentário) sai
+  com o token, o tipo e a ação que resolve, e o resumo separa o que não
+  tem autofix do que o `--unsafe` resolveria. O código de saída não muda.
+  [Detalhes](commands.md#e501-que-o-ruff-format-nao-resolve).
+- **O `fix` relata sobre o arquivo formatado.** As passadas agora são
+  `ruff check --fix-only`, `ruff format` e `ruff check`; antes, o
+  relatório e o código de saída vinham da passada anterior ao formatador.
+
 ## [0.5.0] — 2026-10-13
 
 ### Adicionado

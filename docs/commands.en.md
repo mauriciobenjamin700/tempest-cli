@@ -6,7 +6,7 @@ tool's exit code.
 | Command | Runs |
 | --- | --- |
 | `lint` | `ruff check` |
-| `fix` | `ruff check --fix` then `ruff format` |
+| `fix` | `ruff check --fix-only`, `ruff format`, then a final `ruff check` explaining what is left |
 | `format` | `ruff format` (writes) |
 | `fmt-check` | `ruff format --check` (read-only) |
 | `type` | `mypy` |
@@ -39,14 +39,89 @@ tempest-cli fix                # safe autofixes + formatting
 tempest-cli fix --unsafe       # also ruff's risky autofixes
 ```
 
-`fix` makes two passes: `ruff check --fix` (sorts and dedupes imports,
-drops unused ones, normalizes quotes) and then `ruff format`
-(indentation, line length, blank lines).
+`fix` makes three passes: `ruff check --fix-only` (sorts and dedupes
+imports, drops unused ones, normalizes quotes), `ruff format`
+(indentation, line length, blank lines) and, last, `ruff check` — the
+report of what is left, on the already formatted file. The exit code is
+that last pass's: anything left, `fix` exits with an error and CI fails.
 
 !!! warning "`--unsafe` can change behavior"
     Ruff's "unsafe" autofixes are the ones that may alter semantics.
     They are off by default. Turned them on? Read the `git diff` before
     committing.
+
+### An E501 `ruff format` cannot fix
+
+Sometimes `fix` ends like this, even with the right `line-length` in
+`pyproject.toml`:
+
+```python
+class AloController:
+    def template(self, kind: str) -> str:
+        match kind:
+            case "waiting":
+                user_template = notifications.NOTIFICATION_USER_BODY_ALO_STATUS_CHANGE_WAITING
+                return user_template
+        return ""
+```
+
+```text
+E501 Line too long (94 > 79)
+  --> controller.py:5:80
+```
+
+It is not a wrong setting — `fix` passes no `line-length` to ruff, the
+project's value already applies. It is a limit of the formatter: it
+**never splits a dotted name** (`a.b.C`), and the parentheses you put
+around it (`x = (\n    a.b.C\n)`) go away, because they do not make the
+line fit. 🤷
+
+So when an E501 survives `ruff format`, `fix` explains each line right
+below ruff's report:
+
+```text
+1 line(s) still too long after ruff format — the line-length setting was applied; the formatter has nowhere to break these:
+  controller.py:5 [dotted-name] `notifications.NOTIFICATION_USER_BODY_ALO_STATUS_CHANGE_WAITING`
+    ruff format never splits a dotted name, and drops parentheses that do not make the line fit. Shorten the expression: import or alias the attribute, move the choice into a table or constant, or lower the indentation.
+1 residual violation(s): 1 with no autofix (edit by hand).
+```
+
+The bracketed label says what sits where the line crosses the limit:
+
+| Label | What it is | What resolves it |
+| --- | --- | --- |
+| `dotted-name` | a dotted name (`module.CONSTANT`) | an alias, a table/constant, less indentation |
+| `name` | one name that is too long on its own | rename it or indent less |
+| `string` | a string literal | split it into concatenated parts inside parentheses |
+| `comment` | a comment | wrap it by hand or move it into the docstring |
+| `expression` | anything else | extract a variable or indent less |
+
+The last line separates what has **no autofix** from what `fix --unsafe`
+would resolve — without it, `Found 5 errors` does not say whether
+another run is worth it.
+
+!!! tip "Move the choice into a table"
+    In the example above, the indentation comes from the `match`.
+    Replacing it with a module-level dictionary removes four levels and
+    the line fits in exactly 79, without an alias:
+
+    ```python
+    import notifications
+
+    TEMPLATES: dict[str, str] = {
+        "waiting": notifications.NOTIFICATION_USER_BODY_ALO_STATUS_CHANGE_WAITING,
+    }
+
+
+    class AloController:
+        def template(self, kind: str) -> str:
+            return TEMPLATES.get(kind, "")
+    ```
+
+!!! note "What about `# noqa: E501`?"
+    It works, but hides the problem until the next refactor drops the
+    `noqa` — which is exactly how this case showed up. Prefer changing
+    the shape of the code.
 
 ## One at a time
 
@@ -152,6 +227,8 @@ environment.
 - `check` is lint + fmt-check + type + test, in order, stopping at the
   first failure.
 - `fix` is the pass that repairs; `--unsafe` only when you will review.
+- An E501 left after `fix` is a line the formatter has nowhere to
+  break: `fix` names the token and the action — change the code's shape.
 - `test --fast` / `check --fast` run the suite with pytest-xdist
   (`-n auto`, `-w N` to choose); a test that fails only in parallel is
   checked by running it alone.
