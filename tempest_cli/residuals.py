@@ -58,12 +58,15 @@ ADVICE: Mapping[OverflowKind, str] = {
         "indentation it sits at."
     ),
     "string": (
-        "ruff format does not split string literals. Break it into "
-        "implicitly concatenated parts inside parentheses."
+        "ruff format does not split string literals, and fix could not split "
+        "this one safely (an f-string, a triple-quoted string, or a word "
+        "longer than a line). Break it into implicitly concatenated parts "
+        "inside parentheses."
     ),
     "comment": (
-        "ruff format does not wrap comments. Wrap it by hand, or move the "
-        "explanation into the docstring."
+        "ruff format does not wrap comments, and fix could not wrap this one "
+        "safely (a tool pragma, or a word longer than a line). Wrap it by "
+        "hand, or move the explanation into the docstring."
     ),
     "expression": (
         "ruff format found no split point on this line. Restructure the "
@@ -219,6 +222,25 @@ def _applicability(diagnostic: Mapping[str, Any]) -> str:
     return "none"
 
 
+def parse_report(report: str) -> list[Mapping[str, Any]] | None:
+    """Parse ``ruff check --output-format json`` into its diagnostics.
+
+    Args:
+        report (str): ruff's JSON report.
+
+    Returns:
+        list[Mapping[str, Any]] | None: Every diagnostic object, or
+        ``None`` when ``report`` is not the JSON list ruff writes.
+    """
+    try:
+        diagnostics = json.loads(report)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(diagnostics, list):
+        return None
+    return [entry for entry in diagnostics if isinstance(entry, Mapping)]
+
+
 def collect_residuals(report: str) -> Residuals | None:
     """Parse ``ruff check --output-format json`` into :class:`Residuals`.
 
@@ -233,18 +255,13 @@ def collect_residuals(report: str) -> Residuals | None:
         Residuals | None: The split, or ``None`` when ``report`` is not
         the JSON list ruff writes.
     """
-    try:
-        diagnostics = json.loads(report)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(diagnostics, list):
+    diagnostics = parse_report(report)
+    if diagnostics is None:
         return None
     sources: dict[str, str | None] = {}
     long_lines: list[LongLine] = []
     counts: dict[str, int] = {"none": 0, "unsafe": 0, "safe": 0}
     for diagnostic in diagnostics:
-        if not isinstance(diagnostic, Mapping):
-            continue
         counts[_applicability(diagnostic)] += 1
         if diagnostic.get("code") != LINE_TOO_LONG:
             continue
@@ -272,7 +289,7 @@ def collect_residuals(report: str) -> Residuals | None:
     )
 
 
-def _display_path(path: str) -> str:
+def display_path(path: str) -> str:
     """Shorten ``path`` to a cwd-relative form when it lives below the cwd.
 
     Args:
@@ -312,7 +329,7 @@ def render_residuals(residuals: Residuals) -> str:
         for long_line in residuals.long_lines:
             shown = f" `{long_line.token}`" if long_line.token else ""
             lines.append(
-                f"  {_display_path(long_line.path)}:{long_line.row} "
+                f"  {display_path(long_line.path)}:{long_line.row} "
                 f"[{long_line.kind}]{shown}"
             )
             lines.append(f"    {ADVICE[long_line.kind]}")
@@ -333,5 +350,7 @@ __all__: list[str] = [
     "Residuals",
     "classify_overflow",
     "collect_residuals",
+    "display_path",
+    "parse_report",
     "render_residuals",
 ]

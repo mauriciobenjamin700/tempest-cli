@@ -11,7 +11,7 @@ from pathlib import Path
 
 import typer
 
-from tempest_cli import residuals
+from tempest_cli import residuals, rewrite
 from tempest_cli.config import TempestConfig
 from tempest_cli.steps import CheckStep
 
@@ -296,7 +296,7 @@ def run_ruff_fix(
 ) -> int:
     """Apply every automatic fix ruff can perform, then format the target.
 
-    Runs three passes, so the report describes the file the formatter
+    Runs these passes, so the report describes the file the formatter
     left behind rather than the one it started from:
 
     1. ``ruff check --fix-only [--unsafe-fixes] <target>`` — autofix
@@ -307,16 +307,22 @@ def run_ruff_fix(
        formatter may still resolve.
     2. ``ruff format <target>`` — normalize indentation, line length,
        blank lines and trailing newlines.
-    3. ``ruff check <target>`` — the report of what is left, and the exit
+    3. Long lines the formatter cannot break, shortened where that is
+       safe (see :mod:`tempest_cli.rewrite`): ruff's JSON report is read,
+       comments past the limit are wrapped and string literals are split
+       into implicitly concatenated parts, each edit kept only when the
+       file's AST is unchanged. The files touched go through ``ruff
+       format`` once more.
+    4. ``ruff check <target>`` — the report of what is left, and the exit
        code of the command.
 
-    When the third pass fails, ruff's JSON report of the same target is
+    When the last pass fails, ruff's JSON report of the same target is
     read to explain the leftovers (see :mod:`tempest_cli.residuals`): an
-    E501 that survived ``ruff format`` is one the formatter has nowhere
-    to break — a dotted name, a string, a comment — and is named as such
-    with the action that does resolve it, and the residual violations
-    are split into those with no autofix and those ``--unsafe`` would
-    fix. The exit code is unaffected, so CI still fails on them.
+    E501 that survived is one with no mechanical fix — a dotted name, a
+    long name, an expression — and is named as such with the action that
+    does resolve it, and the residual violations are split into those
+    with no autofix and those ``--unsafe`` would fix. The exit code is
+    unaffected, so CI still fails on them.
 
     Args:
         target (str): The path passed verbatim to ruff.
@@ -340,12 +346,17 @@ def run_ruff_fix(
     if fix_code == MISSING_TOOL_EXIT_CODE:
         return fix_code
     format_code = _execute("ruff", ["format", target])
+    report_args = ["check", *ann_args, "--output-format", "json", "--exit-zero"]
+    long_lines = _capture("ruff", [*report_args, target])
+    shortened = rewrite.rewrite_long_lines(long_lines) if long_lines else []
+    if shortened:
+        typer.echo(rewrite.render_rewrites(shortened), err=True, nl=False)
+        touched = sorted({item.path for item in shortened})
+        reformat_code = _execute("ruff", ["format", "--force-exclude", *touched])
+        format_code = format_code or reformat_code
     check_code = _execute("ruff", ["check", *ann_args, target])
     if check_code:
-        report = _capture(
-            "ruff",
-            ["check", *ann_args, "--output-format", "json", "--exit-zero", target],
-        )
+        report = _capture("ruff", [*report_args, target])
         found = residuals.collect_residuals(report) if report is not None else None
         if found is not None:
             typer.echo(residuals.render_residuals(found), err=True, nl=False)

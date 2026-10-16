@@ -6,7 +6,7 @@ tool's exit code.
 | Command | Runs |
 | --- | --- |
 | `lint` | `ruff check` |
-| `fix` | `ruff check --fix-only`, `ruff format`, then a final `ruff check` explaining what is left |
+| `fix` | `ruff check --fix-only`, `ruff format`, shortens long comments/strings, then a final `ruff check` explaining what is left |
 | `format` | `ruff format` (writes) |
 | `fmt-check` | `ruff format --check` (read-only) |
 | `type` | `mypy` |
@@ -39,11 +39,17 @@ tempest-cli fix                # safe autofixes + formatting
 tempest-cli fix --unsafe       # also ruff's risky autofixes
 ```
 
-`fix` makes three passes: `ruff check --fix-only` (sorts and dedupes
-imports, drops unused ones, normalizes quotes), `ruff format`
-(indentation, line length, blank lines) and, last, `ruff check` — the
-report of what is left, on the already formatted file. The exit code is
-that last pass's: anything left, `fix` exits with an error and CI fails.
+`fix` makes four passes:
+
+1. `ruff check --fix-only` — sorts and dedupes imports, drops unused
+   ones, normalizes quotes.
+2. `ruff format` — indentation, line length, blank lines.
+3. Shortens the long lines the formatter cannot break, when that can be
+   done without changing the program: comments and strings (see below).
+4. `ruff check` — the report of what is left, on the final file.
+
+The exit code is the last pass's: anything left, `fix` exits with an
+error and CI fails.
 
 !!! warning "`--unsafe` can change behavior"
     Ruff's "unsafe" autofixes are the ones that may alter semantics.
@@ -76,8 +82,48 @@ project's value already applies. It is a limit of the formatter: it
 around it (`x = (\n    a.b.C\n)`) go away, because they do not make the
 line fit. 🤷
 
-So when an E501 survives `ruff format`, `fix` explains each line right
-below ruff's report:
+#### What `fix` shortens on its own
+
+Two of these cases have a single right answer, and `fix` applies it:
+
+- a **comment** is wrapped at the limit; a trailing one moves above the
+  code it annotates;
+- a **string** is split at its spaces into concatenated parts inside
+  parentheses — Python joins them back into the same value.
+
+```python
+# before
+    text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb"  # the text
+
+# after fix
+    # the text
+    text = (
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+        "bbbbbbbbbbbbbbbb"
+    )
+```
+
+```text
+shortened 1 long line(s) ruff format cannot break (comments wrapped, strings split into concatenated parts):
+  mod.py:2 [comment+string]
+```
+
+!!! check "Only what is proven equal goes in"
+    Before writing, `fix` compares the file's AST before and after.
+    Comments never reach the AST and the parser folds concatenated
+    strings into one constant, so a correct rewrite always passes.
+    Anything else — a `\N{...}` cut in half, a comment pushed into a
+    `\` continuation — changes the AST, and the line stays as it was.
+
+Left out on purpose: tool comments (`noqa`, `type: ignore`, `fmt:`,
+`pragma`…), which must stay on the line they govern; f-strings and
+triple-quoted strings; and a word longer than a line (a URL, say).
+
+#### What is left
+
+Dotted names, long names and expressions have no mechanical rewrite —
+and splitting them by hand is undone by the next `ruff format`. For
+those, `fix` explains each line right below ruff's report:
 
 ```text
 1 line(s) still too long after ruff format — the line-length setting was applied; the formatter has nowhere to break these:
@@ -92,8 +138,8 @@ The bracketed label says what sits where the line crosses the limit:
 | --- | --- | --- |
 | `dotted-name` | a dotted name (`module.CONSTANT`) | an alias, a table/constant, less indentation |
 | `name` | one name that is too long on its own | rename it or indent less |
-| `string` | a string literal | split it into concatenated parts inside parentheses |
-| `comment` | a comment | wrap it by hand or move it into the docstring |
+| `string` | a string `fix` could not split (f-string, triple quotes, long word) | split it by hand into concatenated parts |
+| `comment` | a comment `fix` could not wrap (pragma, long word) | wrap it by hand or move it into the docstring |
 | `expression` | anything else | extract a variable or indent less |
 
 The last line separates what has **no autofix** from what `fix --unsafe`
@@ -227,8 +273,9 @@ environment.
 - `check` is lint + fmt-check + type + test, in order, stopping at the
   first failure.
 - `fix` is the pass that repairs; `--unsafe` only when you will review.
-- An E501 left after `fix` is a line the formatter has nowhere to
-  break: `fix` names the token and the action — change the code's shape.
+- Long comments and strings `fix` shortens on its own, with the AST
+  proven equal. An E501 left after it has no mechanical rewrite: `fix`
+  names the token and the action — change the code's shape.
 - `test --fast` / `check --fast` run the suite with pytest-xdist
   (`-n auto`, `-w N` to choose); a test that fails only in parallel is
   checked by running it alone.

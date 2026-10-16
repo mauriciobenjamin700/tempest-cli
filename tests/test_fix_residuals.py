@@ -150,15 +150,19 @@ def test_nothing_left_renders_nothing() -> None:
     assert residuals.render_residuals(empty) == ""
 
 
-def test_clean_report_skips_the_json_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_clean_report_reads_ruff_once(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shutil, "which", lambda name, path=None: None if path else name)
     monkeypatch.setattr(subprocess, "call", lambda *_a, **_k: 0)
+    reports: list[list[str]] = []
 
-    def never_run(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("the JSON pass ran on a clean report")
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        reports.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
-    monkeypatch.setattr(subprocess, "run", never_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     assert lint.run_ruff_fix("src", config=TempestConfig()) == 0
+    assert len(reports) == 1
+    assert "--output-format" in reports[0]
 
 
 def test_missing_ruff_stops_before_formatting(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,7 +6,7 @@ saída da ferramenta por baixo.
 | Comando | Roda |
 | --- | --- |
 | `lint` | `ruff check` |
-| `fix` | `ruff check --fix-only`, `ruff format` e um `ruff check` final que explica o que sobrou |
+| `fix` | `ruff check --fix-only`, `ruff format`, encurta comentário/string longos e um `ruff check` final que explica o que sobrou |
 | `format` | `ruff format` (escreve) |
 | `fmt-check` | `ruff format --check` (só leitura) |
 | `type` | `mypy` |
@@ -39,11 +39,16 @@ tempest-cli fix                # autofixes seguros + formatação
 tempest-cli fix --unsafe       # inclui os autofixes de risco do ruff
 ```
 
-O `fix` faz três passadas: `ruff check --fix-only` (ordena e deduplica
-imports, remove imports não usados, normaliza aspas), `ruff format`
-(indentação, comprimento de linha, linhas em branco) e, por fim, `ruff
-check` — o relatório do que sobrou, já sobre o arquivo formatado. O
-código de saída é o dessa última passada: sobrou violação, o `fix` sai
+O `fix` faz quatro passadas:
+
+1. `ruff check --fix-only` — ordena e deduplica imports, remove imports
+   não usados, normaliza aspas.
+2. `ruff format` — indentação, comprimento de linha, linhas em branco.
+3. Encurta as linhas longas que o formatador não quebra, quando dá para
+   fazer isso sem mudar o programa: comentários e strings (veja abaixo).
+4. `ruff check` — o relatório do que sobrou, já sobre o arquivo final.
+
+O código de saída é o da última passada: sobrou violação, o `fix` sai
 com erro e o CI falha.
 
 !!! warning "`--unsafe` muda comportamento"
@@ -76,8 +81,50 @@ ruff, o valor do projeto já vale. É limite do formatador: ele **não
 divide um nome pontuado** (`a.b.C`), e o parêntese que você pôs em volta
 (`x = (\n    a.b.C\n)`) some, porque não faz a linha caber. 🤷
 
-Por isso, quando sobra E501 depois do `ruff format`, o `fix` explica
-cada linha logo abaixo do relatório do ruff:
+#### O que o `fix` encurta sozinho
+
+Dois desses casos têm uma única resposta certa, e o `fix` aplica:
+
+- **comentário** é quebrado no limite; comentário no fim da linha sobe
+  para cima do código que ele comenta;
+- **string** é partida nos espaços em pedaços concatenados entre
+  parênteses — o Python junta tudo de volta no mesmo valor.
+
+```python
+# antes
+    text = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb"  # o texto
+
+# depois do fix
+    # o texto
+    text = (
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+        "bbbbbbbbbbbbbbbb"
+    )
+```
+
+```text
+shortened 1 long line(s) ruff format cannot break (comments wrapped, strings split into concatenated parts):
+  mod.py:2 [comment+string]
+```
+
+!!! check "Só entra o que é provado igual"
+    Antes de gravar, o `fix` compara a AST do arquivo antes e depois.
+    Comentário não entra na AST e o parser junta string concatenada numa
+    constante só, então uma reescrita certa sempre passa. Qualquer outra
+    coisa — um `\N{...}` cortado no meio, comentário empurrado para
+    dentro de uma continuação com `\` — muda a AST, e a linha fica como
+    estava.
+
+Fica de fora, de propósito: comentário de ferramenta (`noqa`,
+`type: ignore`, `fmt:`, `pragma`…), que precisa ficar na linha que
+governa; f-string e string com três aspas; e palavra mais longa que uma
+linha (URL, por exemplo).
+
+#### O que sobra
+
+Nome pontuado, nome longo e expressão não têm reescrita mecânica — e
+quebrá-los à mão é desfeito pelo próximo `ruff format`. Para esses, o
+`fix` explica cada linha logo abaixo do relatório do ruff:
 
 ```text
 1 line(s) still too long after ruff format — the line-length setting was applied; the formatter has nowhere to break these:
@@ -92,8 +139,8 @@ O rótulo entre colchetes diz o que está no ponto onde a linha estoura:
 | --- | --- | --- |
 | `dotted-name` | nome pontuado (`modulo.CONSTANTE`) | alias, tabela/constante, indentação menor |
 | `name` | um nome sozinho longo demais | renomear ou indentar menos |
-| `string` | literal de string | partir em pedaços concatenados entre parênteses |
-| `comment` | comentário | quebrar à mão ou levar para a docstring |
+| `string` | string que o `fix` não pôde partir (f-string, três aspas, palavra longa) | partir à mão em pedaços concatenados |
+| `comment` | comentário que o `fix` não pôde quebrar (pragma, palavra longa) | quebrar à mão ou levar para a docstring |
 | `expression` | qualquer outra coisa | extrair variável ou indentar menos |
 
 A última linha separa o que **não tem autofix** do que o `fix --unsafe`
@@ -223,8 +270,9 @@ pytest.
 - `check` é lint + fmt-check + type + test, nessa ordem, parando na
   primeira falha.
 - `fix` é a passada que conserta; `--unsafe` só quando você for revisar.
-- E501 que sobra depois do `fix` é linha que o formatador não tem onde
-  quebrar: o `fix` diz o token e a ação — mude a forma do código.
+- Comentário e string longos o `fix` encurta sozinho, com a AST provada
+  igual. O E501 que sobra é linha sem reescrita mecânica: o `fix` diz o
+  token e a ação — mude a forma do código.
 - `test --fast` / `check --fast` rodam a suíte com pytest-xdist
   (`-n auto`, `-w N` para escolher); teste que só falha em paralelo se
   confere rodando-o sozinho.

@@ -237,9 +237,12 @@ def register_commands(
         whitespace, normalizes indentation, line length and blank lines.
 
         A line still too long after formatting is one ruff format has
-        nowhere to break (a dotted name, a string, a comment); each is
-        named with the action that resolves it, and the leftovers are
-        split into those with no autofix and those --unsafe would fix.
+        nowhere to break. Long comments are wrapped and long strings are
+        split into concatenated parts, each edit kept only when the AST
+        is unchanged. Whatever is left (a dotted name, a long name, an
+        expression) is named with the action that resolves it, and the
+        leftovers are split into those with no autofix and those
+        --unsafe would fix.
         """
         config = _resolve_config(target, strictness)
         raise typer.Exit(lint_module.run_ruff_fix(target, unsafe=unsafe, config=config))

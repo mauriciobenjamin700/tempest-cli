@@ -13,6 +13,11 @@ do repositório.
   com o token, o tipo e a ação que resolve, e o resumo separa o que não
   tem autofix do que o `--unsafe` resolveria. O código de saída não muda.
   [Detalhes](commands.md#e501-que-o-ruff-format-nao-resolve).
+- **O `fix` encurta comentário e string longos que o formatador não
+  quebra.** Comentário é quebrado no limite e string é partida em pedaços
+  concatenados; cada edição só fica se a AST do arquivo for idêntica
+  antes e depois. Pragma, f-string, três aspas e palavra longa ficam de
+  fora e são explicados. Ligado por padrão.
 - **O `fix` relata sobre o arquivo formatado.** As passadas agora são
   `ruff check --fix-only`, `ruff format` e `ruff check`; antes, o
   relatório e o código de saída vinham da passada anterior ao formatador.
