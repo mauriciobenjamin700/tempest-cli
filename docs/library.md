@@ -31,7 +31,8 @@ run_ruff_fix("src", unsafe=False, config=strict)
 run_ruff_format("src", check=True)        # --check: não escreve
 run_mypy("src", config=strict)
 run_pytest("tests/unit")
-run_pytest("tests/unit", fast=True, workers="4")   # pytest-xdist: -n 4
+run_pytest("tests/unit", fast=True, workers="4")   # pytest-xdist: -n 4; sem ele, 127
+run_pytest("tests", fast=True, require_xdist=False)  # sem pytest-xdist: série, com aviso
 ```
 
 `load_tempest_config(start)` procura o `pyproject.toml` mais próximo
@@ -136,7 +137,7 @@ A ordem é `ruff check` → `ruff format --check` → `mypy` → os passos
 extras, na ordem da lista → `pytest`. Passo extra é checagem estática:
 fica antes da suíte para falhar em um segundo, não depois dela. O
 contrato é o dos passos embutidos — o primeiro código diferente de `0`
-para o gate e vira o código de saída do `check`, com ou sem `--fast`.
+para o gate e vira o código de saída do `check`, em paralelo ou com `--serial`.
 
 !!! tip "A mensagem é sua"
     O `check` só ecoa o nome. O que o passo imprime é o que o usuário lê,

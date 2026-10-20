@@ -42,8 +42,8 @@ remembered to pass.
 | `tempest-cli format` | `ruff format` (writes) |
 | `tempest-cli fmt-check` | `ruff format --check` (read-only) |
 | `tempest-cli type` | `mypy` |
-| `tempest-cli test` | `pytest` (`--fast` spreads it across cores with pytest-xdist: `-n auto -p no:cacheprovider`, `-w N` to choose) |
-| `tempest-cli check` | all four, in order, stopping at the first failure (`--fast` runs the test step in parallel; a host CLI can add steps between `mypy` and `pytest`) |
+| `tempest-cli test` | `pytest`, in parallel by default with pytest-xdist (`-n auto -p no:cacheprovider`, `-w N` to choose; serial with a notice when it is not installed; `--serial` opts out) |
+| `tempest-cli check` | all four, in order, stopping at the first failure (the test step in parallel as in `test`; a host CLI can add steps between `mypy` and `pytest`) |
 | `tempest-cli pr-prompt` | builds the prompt that makes an AI write this branch's PR description |
 
 Every command takes an optional path (`tempest-cli lint src/`) and
@@ -156,7 +156,8 @@ your suite. Add them yourself, or take the bundle:
 uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
 
-`pytest-xdist` is what `test --fast` runs the suite with; its
+`pytest-xdist` is what `test` runs the suite in parallel with, by
+default (without it the suite runs serially, with a notice); its
 `requires-dist` (`execnet>=2.1`, `pytest>=7.0.0`) carries no upper bound.
 
 Whatever you pin wins over the bundled ruff. The lookup runs in this

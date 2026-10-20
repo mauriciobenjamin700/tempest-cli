@@ -5,6 +5,26 @@ All notable changes to **tempest-cli** are listed below.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`test` and `check` run the suite in parallel by default.** The
+  pytest-xdist run that needed `--fast` (`-n auto -p no:cacheprovider`) is
+  now what a bare `tempest-cli test` does; `--serial` opts out (for
+  `--lf` / `--ff`, or a debugger), and `--workers` tunes the default
+  without a flag. Measured on a FastAPI service suite of 1136 tests on a
+  12-CPU machine: 262 s serially, 37.6 s in parallel, same outcome.
+- **Without pytest-xdist the default degrades instead of failing.** When
+  the environment pytest runs in cannot import it, a bare `test` / `check`
+  prints a one-line notice naming the install command and runs the suite
+  serially (exit code is pytest's); an explicit `--fast` keeps the old
+  behavior — the fix is printed and the exit code is 127, nothing runs.
+  `run_pytest` / `run_full_check` take `require_xdist=` (default `True`,
+  the old library behavior) to pick between the two.
+- `--workers` with `--serial` is a usage error (exit 2), as `--workers`
+  without `--fast` used to be.
+
 ## [0.5.1] — 2026-10-15
 
 ### Fixed
