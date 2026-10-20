@@ -77,7 +77,11 @@ WORKER_KEYWORDS: frozenset[str] = frozenset({"auto", "logical"})
 
 
 def _fast_option() -> typer.models.OptionInfo:
-    """Build a fresh ``--fast`` option.
+    """Build a fresh ``--fast/--serial`` option.
+
+    Parallel is the default. ``--fast`` asks for it by name, which turns a
+    missing pytest-xdist into an error; ``--serial`` opts out (for
+    ``--lf`` / ``--ff``, or a debugger).
 
     Returns:
         typer.models.OptionInfo: The configured option.
@@ -85,11 +89,12 @@ def _fast_option() -> typer.models.OptionInfo:
     return cast(
         "typer.models.OptionInfo",
         typer.Option(
-            "--fast",
+            "--fast/--serial",
             help=(
-                "Run the suite in parallel with pytest-xdist: -n <workers> "
-                "-p no:cacheprovider. Needs pytest-xdist in the environment "
-                "pytest runs in."
+                "Parallel (the default) runs the suite with pytest-xdist: "
+                "-n <workers> -p no:cacheprovider. Without pytest-xdist the "
+                "default falls back to a serial run with a notice; --fast "
+                "makes that an error instead. --serial runs one process."
             ),
         ),
     )
@@ -107,9 +112,9 @@ def _workers_option() -> typer.models.OptionInfo:
             "--workers",
             "-w",
             help=(
-                "Worker count for --fast: a number, 'auto' (the default: one "
-                "per physical core when psutil is installed, per logical CPU "
-                "otherwise) or 'logical'. Requires --fast."
+                "Worker count for a parallel run: a number, 'auto' (the "
+                "default: one per physical core when psutil is installed, per "
+                "logical CPU otherwise) or 'logical'. Not with --serial."
             ),
         ),
     )
@@ -121,19 +126,20 @@ def _resolve_workers(
     fast: bool,
     workers: str,
 ) -> str:
-    """Validate ``--workers`` against ``--fast`` and pytest-xdist's grammar.
+    """Validate ``--workers`` against ``--serial`` and pytest-xdist's grammar.
 
     Args:
         ctx (typer.Context): The command context, used to tell an
             explicit ``--workers`` from its default.
-        fast (bool): The ``--fast`` flag value.
+        fast (bool): The ``--fast/--serial`` value (``False`` is
+            ``--serial``).
         workers (str): The ``--workers`` value.
 
     Returns:
         str: The value to hand to ``pytest -n``.
 
     Raises:
-        typer.BadParameter: When ``--workers`` is given without ``--fast``,
+        typer.BadParameter: When ``--workers`` is given with ``--serial``,
             or is neither a non-negative integer nor ``auto``/``logical``.
     """
     explicit = getattr(ctx.get_parameter_source("workers"), "name", "") == (
@@ -141,7 +147,7 @@ def _resolve_workers(
     )
     if explicit and not fast:
         raise typer.BadParameter(
-            "--workers only applies to a parallel run; add --fast.",
+            "--workers only applies to a parallel run; drop --serial.",
             param_hint="--workers",
         )
     if workers in WORKER_KEYWORDS or workers.isdigit():
@@ -152,6 +158,21 @@ def _resolve_workers(
         f"or one of {allowed}.",
         param_hint="--workers",
     )
+
+
+def _require_xdist(ctx: typer.Context) -> bool:
+    """Tell whether the parallel run was asked for by name.
+
+    ``--fast`` on the command line makes a missing pytest-xdist an error;
+    the default (no flag) only prefers parallel and degrades to serial.
+
+    Args:
+        ctx (typer.Context): The command context.
+
+    Returns:
+        bool: ``True`` when ``--fast`` was typed.
+    """
+    return getattr(ctx.get_parameter_source("fast"), "name", "") == "COMMANDLINE"
 
 
 def register_commands(
@@ -166,7 +187,7 @@ def register_commands(
             help text are left untouched; only commands are added.
         extra_steps (Sequence[CheckStep]): Steps the ``check`` command
             runs after ``mypy`` and before ``pytest``, in every variant
-            (``--fast`` included). This is how a framework adds its own
+            (parallel or ``--serial``). This is how a framework adds its own
             rules to the gate without this package knowing about it.
             Empty by default.
 
@@ -286,27 +307,33 @@ def register_commands(
             str | None,
             typer.Argument(help="Optional pytest path filter."),
         ] = None,
-        fast: Annotated[bool, _fast_option()] = False,
+        fast: Annotated[bool, _fast_option()] = True,
         workers: Annotated[str, _workers_option()] = lint_module.DEFAULT_FAST_WORKERS,
     ) -> None:
         """Run ``pytest`` (forwarding the optional path argument).
 
-        --fast spreads the suite across pytest-xdist workers (-n auto
-        unless --workers says otherwise) and turns the cache plugin off,
-        so --lf / --ff belong to serial runs. Without pytest-xdist in the
-        environment pytest runs in, it stops with the install command and
-        exit code 127.
+        The suite runs in parallel by default: pytest-xdist workers (-n
+        auto unless --workers says otherwise), with the cache plugin off,
+        so --lf / --ff belong to --serial runs. Without pytest-xdist in the
+        environment pytest runs in, the default falls back to a serial run
+        and says how to install it; --fast makes that an error (exit code
+        127) instead.
 
-        A test that fails only under --fast shares state with another
+        A test that fails only in parallel shares state with another
         one: a file, a port, a module-level global, a fixed sleep racing
         a busy machine. Before treating it as a regression, rerun it
         alone, serially, with its node id as the target
-        (test tests/test_x.py::test_name). Passing alone means the defect
-        is the test's isolation, not the change under review.
+        (test --serial tests/test_x.py::test_name). Passing alone means the
+        defect is the test's isolation, not the change under review.
         """
         resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
         raise typer.Exit(
-            lint_module.run_pytest(target, fast=fast, workers=resolved_workers)
+            lint_module.run_pytest(
+                target,
+                fast=fast,
+                workers=resolved_workers,
+                require_xdist=_require_xdist(ctx),
+            )
         )
 
     @app.command("check")
@@ -317,14 +344,14 @@ def register_commands(
             typer.Argument(help="Path to inspect. Defaults to the current directory."),
         ] = ".",
         strictness: Annotated[str | None, _strictness_option()] = None,
-        fast: Annotated[bool, _fast_option()] = False,
+        fast: Annotated[bool, _fast_option()] = True,
         workers: Annotated[str, _workers_option()] = lint_module.DEFAULT_FAST_WORKERS,
     ) -> None:
         """Run the full quality gate (lint + fmt-check + type + test).
 
-        ``--fast`` runs the test step as ``test --fast`` does, with the
-        pytest-xdist check made before the first step. Steps the host CLI
-        registered run after type and before test.
+        The test step runs as ``test`` does — in parallel unless
+        ``--serial`` — with the pytest-xdist check made before the first
+        step. Steps the host CLI registered run after type and before test.
         """
         config = _resolve_config(target, strictness)
         resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
@@ -335,6 +362,7 @@ def register_commands(
                 fast=fast,
                 workers=resolved_workers,
                 extra_steps=extra_steps,
+                require_xdist=_require_xdist(ctx),
             )
         )
 

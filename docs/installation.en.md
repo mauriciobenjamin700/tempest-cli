@@ -45,8 +45,9 @@ take the bundle:
 uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
 
-`pytest-xdist` is what [`test --fast`](commands.md#the-suite-in-parallel-fast)
-uses to run the suite in parallel. Its `requires-dist` (`execnet>=2.1`,
+`pytest-xdist` is what [`test`](commands.md#the-suite-in-parallel-the-default)
+uses to run the suite in parallel, the default; without it the suite runs
+serially, with a notice. Its `requires-dist` (`execnet>=2.1`,
 `pytest>=7.0.0`) carries no upper bound, so it tightens nobody's
 resolution.
 

@@ -1,4 +1,4 @@
-"""Tests for ``test --fast`` / ``check --fast``: the parallel pytest run.
+"""Tests for the parallel pytest run of ``test`` / ``check`` (the default).
 
 Three things matter: the argv handed to pytest, the preflight that asks
 *pytest's* interpreter whether pytest-xdist is importable, and the exit
@@ -163,6 +163,40 @@ def test_missing_xdist_names_the_fix_and_reports_127(
     assert "Traceback" not in err
 
 
+def test_preferred_parallel_without_xdist_runs_serially_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[list[str]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The default only prefers parallel: no plugin is a slower run, not an error."""
+    monkeypatch.setattr(subprocess, "run", _probe_answering(1))
+    assert lint.run_pytest("tests", fast=True, require_xdist=False) == 0
+    assert calls[0][1:] == ["tests"]
+    err = capsys.readouterr().err
+    assert "runs serially" in err
+    assert "pytest-xdist" in err
+    assert "tempest-cli[tools]" in err
+
+
+def test_preferred_parallel_with_xdist_still_spreads(calls: list[list[str]]) -> None:
+    assert lint.run_pytest(None, fast=True, require_xdist=False) == 0
+    assert calls[0][1:] == ["-n", "auto", "-p", "no:cacheprovider"]
+
+
+def test_full_check_preferred_parallel_falls_back_without_stopping(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[list[str]],
+) -> None:
+    """The gate runs every step and the pytest one serially."""
+    monkeypatch.setattr(subprocess, "run", _probe_answering(1))
+    code = lint.run_full_check(
+        "src", config=TempestConfig(), fast=True, require_xdist=False
+    )
+    assert code == 0
+    assert len(calls) == 4
+    assert "-n" not in calls[-1]
+
+
 def test_an_unanswerable_probe_lets_pytest_speak(
     monkeypatch: pytest.MonkeyPatch,
     fake_pytest: Path,
@@ -311,13 +345,31 @@ def test_cli_test_fast_forwards_workers_and_target(
         main_module.app, ["test", "tests/unit", "--fast", "--workers", "4"]
     )
     assert result.exit_code == 0, result.output
-    assert seen == [(("tests/unit",), {"fast": True, "workers": "4"})]
+    assert seen == [
+        (("tests/unit",), {"fast": True, "workers": "4", "require_xdist": True})
+    ]
 
 
-def test_cli_fast_defaults_to_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_runs_in_parallel_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No flag: parallel on auto workers, degrading to serial without xdist."""
+    seen = _capture_runner(monkeypatch, "run_pytest")
+    runner.invoke(main_module.app, ["test"])
+    assert seen == [
+        ((None,), {"fast": True, "workers": "auto", "require_xdist": False})
+    ]
+
+
+def test_cli_fast_by_name_requires_xdist(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _capture_runner(monkeypatch, "run_pytest")
     runner.invoke(main_module.app, ["test", "--fast"])
-    assert seen == [((None,), {"fast": True, "workers": "auto"})]
+    assert seen == [((None,), {"fast": True, "workers": "auto", "require_xdist": True})]
+
+
+def test_cli_serial_opts_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _capture_runner(monkeypatch, "run_pytest")
+    runner.invoke(main_module.app, ["test", "--serial", "tests/unit"])
+    assert seen[0][0] == ("tests/unit",)
+    assert seen[0][1]["fast"] is False
 
 
 def test_a_folder_named_fast_is_still_a_target(
@@ -326,16 +378,27 @@ def test_a_folder_named_fast_is_still_a_target(
     """Why ``--fast`` is a flag: ``tempest test fast`` keeps its meaning."""
     seen = _capture_runner(monkeypatch, "run_pytest")
     runner.invoke(main_module.app, ["test", "fast"])
-    assert seen == [(("fast",), {"fast": False, "workers": "auto"})]
+    assert seen == [
+        (("fast",), {"fast": True, "workers": "auto", "require_xdist": False})
+    ]
 
 
-def test_cli_workers_without_fast_is_a_usage_error(
+def test_cli_workers_with_serial_is_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _capture_runner(monkeypatch, "run_pytest")
+    result = runner.invoke(main_module.app, ["test", "--serial", "--workers", "4"])
+    assert result.exit_code == 2
+    assert seen == []
+
+
+def test_cli_workers_without_a_flag_tunes_the_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen = _capture_runner(monkeypatch, "run_pytest")
     result = runner.invoke(main_module.app, ["test", "--workers", "4"])
-    assert result.exit_code == 2
-    assert seen == []
+    assert result.exit_code == 0, result.output
+    assert seen[0][1]["workers"] == "4"
 
 
 @pytest.mark.parametrize("workers", ["many", "-1", "2.5", ""])
@@ -368,6 +431,16 @@ def test_cli_check_fast_reaches_the_gate(monkeypatch: pytest.MonkeyPatch) -> Non
     assert args == ("src",)
     assert kwargs["fast"] is True
     assert kwargs["workers"] == "3"
+    assert kwargs["require_xdist"] is True
+
+
+def test_cli_check_is_parallel_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _capture_runner(monkeypatch, "run_full_check")
+    result = runner.invoke(main_module.app, ["check", "src"])
+    assert result.exit_code == 0, result.output
+    kwargs = seen[0][1]
+    assert kwargs["fast"] is True
+    assert kwargs["require_xdist"] is False
 
 
 def test_cli_propagates_the_runner_exit_code(
@@ -384,5 +457,5 @@ def test_test_help_explains_the_parallel_only_failure() -> None:
     )
     assert command.callback is not None
     doc = command.callback.__doc__ or ""
-    assert "fails only under --fast" in doc
-    assert "tests/test_x.py::test_name" in doc
+    assert "fails only in parallel" in doc
+    assert "test --serial tests/test_x.py::test_name" in doc

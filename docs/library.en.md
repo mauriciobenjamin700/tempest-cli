@@ -30,7 +30,8 @@ run_ruff_fix("src", unsafe=False, config=strict)
 run_ruff_format("src", check=True)        # --check: writes nothing
 run_mypy("src", config=strict)
 run_pytest("tests/unit")
-run_pytest("tests/unit", fast=True, workers="4")   # pytest-xdist: -n 4
+run_pytest("tests/unit", fast=True, workers="4")   # pytest-xdist: -n 4; without it, 127
+run_pytest("tests", fast=True, require_xdist=False)  # without pytest-xdist: serial, with a notice
 ```
 
 `load_tempest_config(start)` walks up from `start` (the cwd by default)
@@ -135,7 +136,7 @@ The order is `ruff check` → `ruff format --check` → `mypy` → the extra
 steps, in list order → `pytest`. An extra step is a static check: it
 sits before the suite so it fails in a second, not after it. The
 contract is the built-in steps' — the first non-zero code stops the gate
-and becomes `check`'s exit code, with or without `--fast`.
+and becomes `check`'s exit code, in parallel or with `--serial`.
 
 !!! tip "The message is yours"
     `check` only echoes the name. What the step prints is what the user

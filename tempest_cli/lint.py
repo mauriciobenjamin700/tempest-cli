@@ -8,6 +8,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Literal
 
 import typer
 
@@ -494,41 +495,86 @@ def _module_available(interpreter: list[str], module: str) -> bool | None:
     return None
 
 
-def _missing_xdist_code() -> int:
-    """Check that the environment pytest runs in can import pytest-xdist.
+ParallelDecision = Literal["parallel", "serial", "stop"]
+"""How a requested parallel run proceeds once pytest-xdist was looked for."""
+
+XDIST_INSTALL_HINT = (
+    "'uv add --dev pytest-xdist' — or a bundle that carries it, "
+    "'uv add --dev \"tempest-cli[tools]\"' or "
+    "'uv add --dev \"tempest-fastapi-sdk[tests]\"'"
+)
+"""How to get pytest-xdist, quoted by both the error and the fallback notice."""
+
+
+def _xdist_missing() -> list[str] | None:
+    """Tell whether the environment pytest runs in lacks pytest-xdist.
 
     Without the plugin, ``pytest -n auto`` stops at argument parsing with
     ``unrecognized arguments: -n`` — true, but it names neither the
     missing package nor the way to get it. This preflight answers first,
-    in words.
+    so the caller can say it in words.
 
-    An unknown answer is not a failure: when pytest cannot be resolved
+    An unknown answer is not "missing": when pytest cannot be resolved
     (:func:`_execute` reports that with its own message) or its
     interpreter cannot be told, the run proceeds and pytest speaks.
 
     Returns:
-        int: ``0`` when the plugin is present or its presence cannot be
-        told; :data:`MISSING_TOOL_EXIT_CODE` after printing the fix when
-        it is absent.
+        list[str] | None: The pytest argv prefix when the plugin is
+        known to be absent; ``None`` when it is present or its presence
+        cannot be told.
     """
     argv = resolve_tool("pytest")
     if argv is None:
-        return 0
+        return None
     interpreter = _pytest_interpreter(argv)
     if interpreter is None:
-        return 0
+        return None
     if _module_available(interpreter, XDIST_MODULE) is not False:
-        return 0
+        return None
+    return argv
+
+
+def _parallel_allowed(*, require_xdist: bool) -> ParallelDecision:
+    """Decide how a parallel run proceeds, given whether xdist is present.
+
+    Two policies, picked by ``require_xdist``:
+
+    - **required** (the parallel run was asked for by name, ``--fast``):
+      a missing plugin is an error — the fix is printed and
+      :data:`MISSING_TOOL_EXIT_CODE` comes back, so nothing runs;
+    - **preferred** (parallel is only the default): a missing plugin
+      degrades the run to serial, with a one-line notice on stderr
+      naming the install command. ``tempest test`` keeps working in a
+      project that never installed pytest-xdist, it is just slower.
+
+    Args:
+        require_xdist (bool): Whether a missing plugin is an error.
+
+    Returns:
+        ParallelDecision: ``"parallel"`` when the plugin is there (or its
+        presence cannot be told), ``"serial"`` to fall back, ``"stop"``
+        after printing the fix.
+    """
+    argv = _xdist_missing()
+    if argv is None:
+        return "parallel"
+    where = " ".join(argv)
+    if require_xdist:
+        typer.echo(
+            "error: --fast needs pytest-xdist, which is not installed in the "
+            f"environment pytest runs in ({where}). Install it with "
+            f"{XDIST_INSTALL_HINT} — and retry, or pass --serial to run the "
+            "suite serially.",
+            err=True,
+        )
+        return "stop"
     typer.echo(
-        "error: --fast needs pytest-xdist, which is not installed in the "
-        f"environment pytest runs in ({' '.join(argv)}). Install it with "
-        "'uv add --dev pytest-xdist' — or a bundle that carries it, "
-        "'uv add --dev \"tempest-cli[tools]\"' or "
-        "'uv add --dev \"tempest-fastapi-sdk[tests]\"' — and retry, "
-        "or drop --fast to run the suite serially.",
+        "note: pytest-xdist is not installed in the environment pytest runs "
+        f"in ({where}), so the suite runs serially. Install it with "
+        f"{XDIST_INSTALL_HINT} — to run it in parallel.",
         err=True,
     )
-    return MISSING_TOOL_EXIT_CODE
+    return "serial"
 
 
 def _pytest_args(target: str | None, *, fast: bool, workers: str) -> list[str]:
@@ -555,6 +601,7 @@ def run_pytest(
     *,
     fast: bool = False,
     workers: str = DEFAULT_FAST_WORKERS,
+    require_xdist: bool = True,
 ) -> int:
     """Invoke ``pytest`` with an optional target.
 
@@ -563,8 +610,8 @@ def run_pytest(
     writing ``.pytest_cache`` at once is a race that buys nothing. The
     cache is what ``--lf`` / ``--ff`` read, so those belong to serial
     runs. Before spawning, the interpreter pytest runs under is asked
-    whether it can import pytest-xdist; when it cannot, the fix is
-    printed and nothing runs.
+    whether it can import pytest-xdist; what happens when it cannot is
+    ``require_xdist``'s call (:func:`_parallel_allowed`).
 
     Args:
         target (str | None): Optional pytest path filter. ``None`` runs
@@ -574,16 +621,21 @@ def run_pytest(
         workers (str): Worker count for ``fast`` — an integer, ``auto``
             (one per CPU core: physical when ``psutil`` is importable) or
             ``logical``, exactly as ``pytest -n`` takes it. Ignored when
-            ``fast`` is False.
+            the run is serial.
+        require_xdist (bool): With ``fast``, whether a missing
+            pytest-xdist stops the run (``True``, the default) or degrades
+            it to serial with a notice (``False``, what the CLI passes
+            when parallel is only its default).
 
     Returns:
         int: The pytest exit code, or :data:`MISSING_TOOL_EXIT_CODE` when
-        pytest — or, with ``fast``, pytest-xdist — is absent.
+        pytest — or a required pytest-xdist — is absent.
     """
     if fast:
-        code = _missing_xdist_code()
-        if code != 0:
-            return code
+        decision = _parallel_allowed(require_xdist=require_xdist)
+        if decision == "stop":
+            return MISSING_TOOL_EXIT_CODE
+        fast = decision == "parallel"
     return _execute("pytest", _pytest_args(target, fast=fast, workers=workers))
 
 
@@ -622,6 +674,7 @@ def run_full_check(
     fast: bool = False,
     workers: str = DEFAULT_FAST_WORKERS,
     extra_steps: Sequence[CheckStep] = (),
+    require_xdist: bool = True,
 ) -> int:
     """Run the entire quality gate sequentially.
 
@@ -635,8 +688,9 @@ def run_full_check(
 
     With ``fast=True`` the pytest step runs the way :func:`run_pytest`
     runs it with ``fast=True``. The pytest-xdist preflight happens
-    *before* the first step, so a missing plugin fails in a second
-    instead of after lint and mypy have already run.
+    *before* the first step, so a required plugin that is missing fails
+    in a second instead of after lint and mypy have already run, and a
+    merely preferred one degrades the pytest step to serial up front.
 
     Args:
         target (str): The path inspected by ruff/mypy and handed to every
@@ -651,15 +705,19 @@ def run_full_check(
         extra_steps (Sequence[CheckStep]): Caller-supplied steps run
             after ``mypy`` and before ``pytest``. Empty by default, which
             leaves the gate exactly as it was without them.
+        require_xdist (bool): With ``fast``, whether a missing
+            pytest-xdist stops the gate or degrades the pytest step to
+            serial — as in :func:`run_pytest`.
 
     Returns:
         int: The first non-zero exit code — a tool's or an extra step's —
         or ``0`` when every gate passed.
     """
     if fast:
-        code = _missing_xdist_code()
-        if code != 0:
-            return code
+        decision = _parallel_allowed(require_xdist=require_xdist)
+        if decision == "stop":
+            return MISSING_TOOL_EXIT_CODE
+        fast = decision == "parallel"
     resolved = config or TempestConfig()
     steps: list[tuple[str, Callable[[], int]]] = [
         _tool_step("ruff", ["check", *_ruff_ann_args(resolved), target]),
@@ -679,6 +737,7 @@ def run_full_check(
 __all__: list[str] = [
     "DEFAULT_FAST_WORKERS",
     "MISSING_TOOL_EXIT_CODE",
+    "XDIST_INSTALL_HINT",
     "XDIST_MODULE",
     "resolve_tool",
     "run_full_check",

@@ -59,7 +59,7 @@ def log(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(subprocess, "call", fake_call)
     monkeypatch.setattr(shutil, "which", _on_path_only)
-    monkeypatch.setattr(lint, "_missing_xdist_code", lambda: 0)
+    monkeypatch.setattr(lint, "_xdist_missing", lambda: None)
     return entries
 
 

@@ -46,8 +46,9 @@ mesmo, ou pegue o pacote pronto:
 uv add --dev "tempest-cli[tools]"   # mypy + pytest + pytest-xdist
 ```
 
-O `pytest-xdist` é o que o [`test --fast`](commands.md#a-suite-em-paralelo-fast)
-usa para rodar a suíte em paralelo. O `requires-dist` dele
+O `pytest-xdist` é o que o [`test`](commands.md#a-suite-em-paralelo-o-padrao)
+usa para rodar a suíte em paralelo, o padrão; sem ele a suíte roda em
+série, com um aviso. O `requires-dist` dele
 (`execnet>=2.1`, `pytest>=7.0.0`) não tem teto nenhum, então ele não
 aperta a resolução de ninguém.
 
