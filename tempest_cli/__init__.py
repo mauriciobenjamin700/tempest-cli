@@ -57,7 +57,7 @@ from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
 from tempest_cli.steps import CheckStep as CheckStep
 
-__version__: str = "0.5.1"
+__version__: str = "0.6.0"
 """Installed package version."""
 
 __all__: list[str] = [

@@ -4,6 +4,21 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
+## [0.6.0] — 2026-10-20
+
+### Alterado
+
+- **O `test` e o `check` rodam a suíte em paralelo por padrão.** O
+  `-n auto` do pytest-xdist, que pedia `--fast`, agora é o que um
+  `test` puro faz; `--serial` desliga (para `--lf` / `--ff` ou depurador).
+  Medido numa suíte FastAPI de 1136 testes em 12 CPUs: 262 s em série,
+  37,6 s em paralelo, mesmo resultado.
+  [Detalhes](commands.md#a-suite-em-paralelo-o-padrao).
+- **Sem o pytest-xdist, o padrão cai para série em vez de falhar**, com um
+  aviso de como instalar; só o `--fast` explícito continua exigindo o
+  plugin (código de saída 127).
+- `--workers` com `--serial` é erro de uso (código de saída 2).
+
 ## [0.5.1] — 2026-10-15
 
 ### Corrigido
@@ -45,7 +60,7 @@ do repositório.
   o padrão — ou `logical`) e é erro de uso sem `--fast`. O alvo é
   repassado e o código de saída do pytest volta sem tradução. É flag, e
   não subcomando, porque `test fast` continua significando a pasta
-  `fast/`. [Detalhes](commands.md#a-suite-em-paralelo-fast).
+  `fast/`. [Detalhes](commands.md#a-suite-em-paralelo-o-padrao).
 - **pytest-xdist ausente vira frase, não `unrecognized arguments: -n`.**
   O `--fast` pergunta ao interpretador que vai rodar o pytest se ele
   importa o `xdist`; faltando, a mensagem nomeia o pacote e os extras

@@ -3,6 +3,21 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
+## [0.6.0] — 2026-10-20
+
+### Changed
+
+- **`test` and `check` run the suite in parallel by default.** The
+  pytest-xdist `-n auto` run that needed `--fast` is now what a bare
+  `test` does; `--serial` opts out (for `--lf` / `--ff`, or a debugger).
+  Measured on a FastAPI suite of 1136 tests on 12 CPUs: 262 s serially,
+  37.6 s in parallel, same outcome.
+  [Details](commands.md#the-suite-in-parallel-the-default).
+- **Without pytest-xdist the default degrades to serial instead of
+  failing**, with a notice naming the install command; only an explicit
+  `--fast` still requires the plugin (exit code 127).
+- `--workers` with `--serial` is a usage error (exit code 2).
+
 ## [0.5.1] — 2026-10-15
 
 ### Fixed
@@ -46,7 +61,7 @@ The full history lives in the repository's
   the default — or `logical`) and is a usage error without `--fast`. The
   target is forwarded and pytest's exit code comes back untranslated. It
   is a flag, not a subcommand, because `test fast` keeps meaning the
-  `fast/` folder. [Details](commands.md#the-suite-in-parallel-fast).
+  `fast/` folder. [Details](commands.md#the-suite-in-parallel-the-default).
 - **A missing pytest-xdist is a sentence, not `unrecognized arguments:
   -n`.** `--fast` asks the interpreter that will run pytest whether it
   can import `xdist`; when it cannot, the message names the package and
