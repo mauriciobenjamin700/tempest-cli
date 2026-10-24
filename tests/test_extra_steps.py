@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import shutil
 import subprocess
+from functools import partial
 from typing import Any
 
 import pytest
@@ -16,7 +17,7 @@ import typer
 from typer.testing import CliRunner
 
 import tempest_cli
-from tempest_cli import CheckStep, lint
+from tempest_cli import CheckStep, StepOptions, lint
 from tempest_cli import main as main_module
 from tempest_cli.config import TempestConfig
 
@@ -199,3 +200,83 @@ def test_the_steps_stay_on_the_app_they_were_given_to(log: list[str]) -> None:
     result = runner.invoke(main_module.app, ["check", "src"])
     assert result.exit_code == 0, result.output
     assert log == ["ruff", "ruff", "mypy", "pytest"]
+
+
+def _options_step(
+    seen: list[StepOptions], *, code: int = 0, name: str = "layers"
+) -> CheckStep:
+    """Build a step that records the options ``check`` handed it.
+
+    Args:
+        seen (list[StepOptions]): Grows by the options of each run.
+        code (int): Exit code the step returns.
+        name (str): The step label.
+
+    Returns:
+        CheckStep: A step declaring ``run_with_options``.
+    """
+    return CheckStep(
+        name=name,
+        run=lambda _target: 99,
+        run_with_options=partial(_record_options, seen, code),
+    )
+
+
+def _record_options(
+    seen: list[StepOptions], code: int, _target: str, options: StepOptions
+) -> int:
+    """Record the options and return ``code``.
+
+    Args:
+        seen (list[StepOptions]): The record.
+        code (int): Exit code to return.
+        _target (str): The check target, unused.
+        options (StepOptions): What ``check`` parsed.
+
+    Returns:
+        int: ``code``.
+    """
+    seen.append(options)
+    return code
+
+
+def test_check_hands_rule_and_strict_to_the_steps_that_read_them(
+    log: list[str],
+) -> None:
+    seen: list[StepOptions] = []
+    host = _host_with([_options_step(seen), _step(log, "plain")])
+    result = runner.invoke(
+        host, ["check", "src", "--rule", "SVC002", "--rule", "IMP002", "--strict"]
+    )
+    assert result.exit_code == 0, result.output
+    assert seen == [StepOptions(rules=("SVC002", "IMP002"), strict=True)]
+    assert log == ["ruff", "ruff", "mypy", "plain", "pytest"]
+
+
+def test_without_options_the_step_still_gets_the_defaults(log: list[str]) -> None:
+    seen: list[StepOptions] = []
+    host = _host_with([_options_step(seen)])
+    result = runner.invoke(host, ["check", "src", "--no-strict"])
+    assert result.exit_code == 0, result.output
+    assert seen == [StepOptions(rules=(), strict=False)]
+    seen.clear()
+    assert runner.invoke(host, ["check", "src"]).exit_code == 0
+    assert seen == [StepOptions()]
+    assert not seen[0].given
+
+
+def test_rule_without_a_step_that_reads_it_is_refused(log: list[str]) -> None:
+    """A typed flag nothing reads would pass the gate while doing nothing."""
+    host = _host_with([_step(log, "plain")])
+    result = runner.invoke(host, ["check", "src", "--rule", "SVC002"])
+    assert result.exit_code == 2
+    assert "no step of this check reads --rule" in result.output
+    assert log == []
+
+
+def test_the_step_exit_code_still_stops_the_gate(log: list[str]) -> None:
+    seen: list[StepOptions] = []
+    host = _host_with([_options_step(seen, code=1)])
+    result = runner.invoke(host, ["check", "src", "--strict"])
+    assert result.exit_code == 1
+    assert log == ["ruff", "ruff", "mypy"]

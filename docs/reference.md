@@ -38,6 +38,7 @@ Gerada a partir das docstrings do pacote via
 ## Passos extras
 
 ::: tempest_cli.steps.CheckStep
+::: tempest_cli.steps.StepOptions
 
 ---
 

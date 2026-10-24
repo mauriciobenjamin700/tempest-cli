@@ -14,7 +14,7 @@ import typer
 
 from tempest_cli import residuals, rewrite
 from tempest_cli.config import TempestConfig
-from tempest_cli.steps import CheckStep
+from tempest_cli.steps import CheckStep, StepOptions
 
 SHIM_PROBE_TIMEOUT_SECONDS = 20.0
 """Seconds allowed for the ``<tool> --version`` probe of a version-manager shim."""
@@ -653,17 +653,24 @@ def _tool_step(executable: str, args: list[str]) -> tuple[str, Callable[[], int]
     return f"{executable} {' '.join(args)}", lambda: _execute(executable, args)
 
 
-def _extra_step(step: CheckStep, target: str) -> tuple[str, Callable[[], int]]:
+def _extra_step(
+    step: CheckStep, target: str, options: StepOptions
+) -> tuple[str, Callable[[], int]]:
     """Pair a caller-supplied step with the label ``check`` echoes for it.
 
     Args:
         step (CheckStep): The step to run.
-        target (str): The path handed to ``step.run``.
+        target (str): The path handed to the step.
+        options (StepOptions): What ``check --rule`` / ``--strict`` parsed.
 
     Returns:
-        tuple[str, Callable[[], int]]: ``(step.name, thunk)``, where
-        calling the thunk runs ``step.run(target)``.
+        tuple[str, Callable[[], int]]: ``(step.name, thunk)``. The thunk
+        calls ``step.run_with_options(target, options)`` when the step
+        declares it, ``step.run(target)`` otherwise.
     """
+    with_options = step.run_with_options
+    if with_options is not None:
+        return step.name, lambda: with_options(target, options)
     return step.name, lambda: step.run(target)
 
 
@@ -675,6 +682,7 @@ def run_full_check(
     workers: str = DEFAULT_FAST_WORKERS,
     extra_steps: Sequence[CheckStep] = (),
     require_xdist: bool = True,
+    step_options: StepOptions = StepOptions(),
 ) -> int:
     """Run the entire quality gate sequentially.
 
@@ -708,6 +716,8 @@ def run_full_check(
         require_xdist (bool): With ``fast``, whether a missing
             pytest-xdist stops the gate or degrades the pytest step to
             serial — as in :func:`run_pytest`.
+        step_options (StepOptions): Handed to every extra step that
+            declares ``run_with_options``; the built-in steps never see it.
 
     Returns:
         int: The first non-zero exit code — a tool's or an extra step's —
@@ -723,7 +733,7 @@ def run_full_check(
         _tool_step("ruff", ["check", *_ruff_ann_args(resolved), target]),
         _tool_step("ruff", ["format", "--check", target]),
         _tool_step("mypy", [*resolved.mypy_flags(), target]),
-        *(_extra_step(step, target) for step in extra_steps),
+        *(_extra_step(step, target, step_options) for step in extra_steps),
         _tool_step("pytest", _pytest_args(None, fast=fast, workers=workers)),
     ]
     for label, run in steps:

@@ -20,7 +20,7 @@ import typer
 from tempest_cli import lint as lint_module
 from tempest_cli import pr_prompt as pr_prompt_module
 from tempest_cli.config import TempestConfig, TypingStrictness, load_tempest_config
-from tempest_cli.steps import CheckStep
+from tempest_cli.steps import CheckStep, StepOptions
 
 
 def _strictness_option() -> typer.models.OptionInfo:
@@ -173,6 +173,38 @@ def _require_xdist(ctx: typer.Context) -> bool:
         bool: ``True`` when ``--fast`` was typed.
     """
     return getattr(ctx.get_parameter_source("fast"), "name", "") == "COMMANDLINE"
+
+
+def _step_options(
+    rules: list[str] | None,
+    strict: bool | None,
+    extra_steps: Sequence[CheckStep],
+) -> StepOptions:
+    """Build the options ``check`` hands to its extra steps.
+
+    Args:
+        rules (list[str] | None): The ``--rule`` values, in order.
+        strict (bool | None): ``--strict`` / ``--no-strict``, ``None`` when
+            neither was typed.
+        extra_steps (Sequence[CheckStep]): The steps registered on the host.
+
+    Returns:
+        StepOptions: The parsed options.
+
+    Raises:
+        typer.BadParameter: When an option was typed and no registered step
+            reads options — the flag would otherwise be silently ignored.
+    """
+    options = StepOptions(rules=tuple(rules or ()), strict=strict)
+    if options.given and not any(
+        step.run_with_options is not None for step in extra_steps
+    ):
+        raise typer.BadParameter(
+            "no step of this check reads --rule / --strict; they are options "
+            "of the steps a host CLI adds (tempest-fastapi-sdk's lint-layers).",
+            param_hint="--rule / --strict",
+        )
+    return options
 
 
 def register_commands(
@@ -346,13 +378,31 @@ def register_commands(
         strictness: Annotated[str | None, _strictness_option()] = None,
         fast: Annotated[bool, _fast_option()] = True,
         workers: Annotated[str, _workers_option()] = lint_module.DEFAULT_FAST_WORKERS,
+        rule: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--rule",
+                help="Report only this rule code in the host's steps "
+                "(repeatable), to migrate one rule at a time.",
+            ),
+        ] = None,
+        strict: Annotated[
+            bool | None,
+            typer.Option(
+                "--strict/--no-strict",
+                help="Make the host's steps fail on warnings too. Defaults to "
+                "the step's own configuration.",
+            ),
+        ] = None,
     ) -> None:
         """Run the full quality gate (lint + fmt-check + type + test).
 
         The test step runs as ``test`` does — in parallel unless
         ``--serial`` — with the pytest-xdist check made before the first
-        step. Steps the host CLI registered run after type and before test.
+        step. Steps the host CLI registered run after type and before test;
+        ``--rule`` and ``--strict`` are handed to them.
         """
+        options = _step_options(rule, strict, extra_steps)
         config = _resolve_config(target, strictness)
         resolved_workers = _resolve_workers(ctx, fast=fast, workers=workers)
         raise typer.Exit(
@@ -363,6 +413,7 @@ def register_commands(
                 workers=resolved_workers,
                 extra_steps=extra_steps,
                 require_xdist=_require_xdist(ctx),
+                step_options=options,
             )
         )
 
