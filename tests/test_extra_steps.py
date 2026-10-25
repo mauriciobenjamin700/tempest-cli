@@ -7,6 +7,7 @@ order between them is asserted directly rather than inferred.
 from __future__ import annotations
 
 import dataclasses
+import re
 import shutil
 import subprocess
 from functools import partial
@@ -265,12 +266,31 @@ def test_without_options_the_step_still_gets_the_defaults(log: list[str]) -> Non
     assert not seen[0].given
 
 
+def _plain(output: str) -> str:
+    """Reduce a Rich-rendered error to its words.
+
+    Under ``GITHUB_ACTIONS`` Rich colours the usage error and wraps it in a
+    box, so a sentence is split by ANSI codes, ``│`` borders and line
+    breaks; locally it is not. Both runs have to read the same text.
+
+    Args:
+        output (str): What the command printed.
+
+    Returns:
+        str: The text without ANSI codes or box characters, every run of
+        whitespace collapsed to one space.
+    """
+    without_ansi = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    without_box = re.sub(r"[│╭╮╰╯─]", " ", without_ansi)
+    return " ".join(without_box.split())
+
+
 def test_rule_without_a_step_that_reads_it_is_refused(log: list[str]) -> None:
     """A typed flag nothing reads would pass the gate while doing nothing."""
     host = _host_with([_step(log, "plain")])
     result = runner.invoke(host, ["check", "src", "--rule", "SVC002"])
     assert result.exit_code == 2
-    assert "no step of this check reads --rule" in result.output
+    assert "no step of this check reads --rule" in _plain(result.output)
     assert log == []
 
 
