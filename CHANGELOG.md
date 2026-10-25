@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-24
+
+### Added
+
+- **`check --rule <CODE>` and `check --strict` / `--no-strict`, for the host's
+  steps.** They mean nothing to ruff, mypy or pytest; `check` parses them
+  into a `StepOptions(rules, strict)` and hands it to every extra step that
+  declares the new `CheckStep.run_with_options(target, options)`. A step
+  without it keeps getting `run(target)`. When no step reads options, a
+  typed `--rule` / `--strict` exits `2` before anything runs, instead of
+  passing the gate while ignoring the flag. `run_full_check` takes
+  `step_options=`; `StepOptions` is exported from `tempest_cli`.
+
 ## [0.6.0] — 2026-10-20
 
 ### Changed

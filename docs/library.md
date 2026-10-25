@@ -162,6 +162,105 @@ exit_code: int = run_full_check(
 `extra_steps` é vazio por padrão: sem ele, o gate é exatamente o de
 antes.
 
+### Opções para o passo: `--rule` e `--strict`
+
+Um passo que reporta códigos de regra com severidade (erro que derruba,
+aviso que não) quer duas opções que o ruff, o mypy e o pytest não
+conhecem: filtrar uma regra e fazer aviso derrubar. O `check` aceita as
+duas — `--rule <CÓDIGO>` (repetível) e `--strict` / `--no-strict` — e as
+entrega já tipadas num `StepOptions` ao passo que declara
+`run_with_options`. O passo nunca lê a linha de comando.
+
+```python
+from pathlib import Path
+
+import typer
+
+from tempest_cli import CheckStep, StepOptions
+from tempest_cli.main import register_commands
+
+RULES: dict[str, str] = {"BL001": "time.sleep(", "BL002": "os.getenv("}
+"""Rule code to the call it reports; BL002 is only a warning."""
+
+WARNINGS: frozenset[str] = frozenset({"BL002"})
+"""Codes that fail the step only under --strict."""
+
+
+def no_blocking_calls(target: str, options: StepOptions) -> int:
+    """Report the calls in RULES, filtered by --rule, failing per --strict."""
+    selected = set(options.rules) or set(RULES)
+    failed = False
+    for path in sorted(Path(target).rglob("*.py")):
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            for code in sorted(selected):
+                if RULES[code] in line:
+                    warning = code in WARNINGS
+                    tag = " (warning)" if warning else ""
+                    typer.echo(f"{path}:{number}: {code}{tag}", err=True)
+                    failed = failed or not warning or bool(options.strict)
+    return 1 if failed else 0
+
+
+def no_blocking_calls_plain(target: str) -> int:
+    """The same step, called without options."""
+    return no_blocking_calls(target, StepOptions())
+
+
+cli: typer.Typer = typer.Typer(name="minhaferramenta")
+
+
+@cli.command("deploy")
+def deploy() -> None:
+    """Um comando que a ferramenta já tinha."""
+
+
+register_commands(
+    cli,
+    extra_steps=[
+        CheckStep(
+            name="no-blocking-calls",
+            run=no_blocking_calls_plain,
+            run_with_options=no_blocking_calls,
+        )
+    ],
+)
+
+if __name__ == "__main__":
+    cli()
+```
+
+Com um `pkg/a.py` que chama `os.getenv(...)` na linha 6 (só o trecho do
+passo; saída real):
+
+```console
+$ python minhaferramenta.py check pkg
+$ no-blocking-calls
+pkg/a.py:6: BL002 (warning)
+$ pytest -n auto -p no:cacheprovider
+...
+$ echo $?
+0
+$ python minhaferramenta.py check pkg --strict
+$ no-blocking-calls
+pkg/a.py:6: BL002 (warning)
+$ echo $?
+1
+$ python minhaferramenta.py check pkg --rule BL001 --strict
+$ no-blocking-calls
+$ pytest -n auto -p no:cacheprovider
+...
+$ echo $?
+0
+```
+
+- `rules` é uma tupla vazia e `strict` é `None` quando nada foi digitado;
+  `StepOptions.given` diz se alguma das duas veio.
+- Passo sem `run_with_options` continua recebendo só o alvo, pelo `run`.
+- **Opção que ninguém lê é recusada.** Se nenhum passo do `check` declara
+  `run_with_options`, `--rule` / `--strict` saem com código `2` antes de
+  rodar qualquer passo — um gate que passa ignorando a flag seria pior que
+  um erro.
+
 ## Gerar o prompt de PR sem a CLI
 
 ```python

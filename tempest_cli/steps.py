@@ -17,6 +17,36 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class StepOptions:
+    """Options of ``check`` that only the extra steps read.
+
+    ``check --rule <CODE>`` and ``check --strict`` mean nothing to ruff,
+    mypy or pytest; they are for a step that reports rule codes with a
+    severity. ``tempest-cli`` parses them and hands them over as typed
+    values, so a step never parses the command line itself.
+
+    Attributes:
+        rules (tuple[str, ...]): Rule codes to report, as typed (``--rule``
+            repeated). Empty means every rule.
+        strict (bool | None): ``--strict`` / ``--no-strict``. ``None`` when
+            neither was typed, so the step falls back to its own default.
+    """
+
+    rules: tuple[str, ...] = ()
+    strict: bool | None = None
+
+    @property
+    def given(self) -> bool:
+        """Tell whether any option was typed.
+
+        Returns:
+            bool: ``True`` when ``--rule`` or ``--strict`` / ``--no-strict``
+            was passed.
+        """
+        return bool(self.rules) or self.strict is not None
+
+
+@dataclass(frozen=True)
 class CheckStep:
     """A step ``check`` runs after ``mypy`` and before ``pytest``.
 
@@ -31,6 +61,11 @@ class CheckStep:
             (the path given on the command line, ``.`` by default);
             returns an exit code, ``0`` meaning the step passed. A
             non-zero code stops the gate and becomes its exit code.
+        run_with_options (Callable[[str, StepOptions], int] | None): Called
+            instead of ``run`` when set, with the target and the
+            :class:`StepOptions` ``check`` parsed. ``None`` (the default)
+            marks a step with no options; ``check --rule`` refuses to run
+            when no step declares this.
 
     Example:
         ```python
@@ -49,6 +84,7 @@ class CheckStep:
 
     name: str
     run: Callable[[str], int]
+    run_with_options: Callable[[str, StepOptions], int] | None = None
 
 
-__all__: list[str] = ["CheckStep"]
+__all__: list[str] = ["CheckStep", "StepOptions"]

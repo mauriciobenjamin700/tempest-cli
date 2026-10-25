@@ -162,6 +162,106 @@ exit_code: int = run_full_check(
 `extra_steps` is empty by default: without it, the gate is exactly what
 it was.
 
+### Options for the step: `--rule` and `--strict`
+
+A step that reports rule codes with a severity (an error that fails, a
+warning that does not) wants two options ruff, mypy and pytest do not know:
+filtering one rule and making warnings fail. `check` takes both —
+`--rule <CODE>` (repeatable) and `--strict` / `--no-strict` — and hands
+them, already typed, in a `StepOptions` to the step that declares
+`run_with_options`. The step never reads the command line.
+
+```python
+from pathlib import Path
+
+import typer
+
+from tempest_cli import CheckStep, StepOptions
+from tempest_cli.main import register_commands
+
+RULES: dict[str, str] = {"BL001": "time.sleep(", "BL002": "os.getenv("}
+"""Rule code to the call it reports; BL002 is only a warning."""
+
+WARNINGS: frozenset[str] = frozenset({"BL002"})
+"""Codes that fail the step only under --strict."""
+
+
+def no_blocking_calls(target: str, options: StepOptions) -> int:
+    """Report the calls in RULES, filtered by --rule, failing per --strict."""
+    selected = set(options.rules) or set(RULES)
+    failed = False
+    for path in sorted(Path(target).rglob("*.py")):
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            for code in sorted(selected):
+                if RULES[code] in line:
+                    warning = code in WARNINGS
+                    tag = " (warning)" if warning else ""
+                    typer.echo(f"{path}:{number}: {code}{tag}", err=True)
+                    failed = failed or not warning or bool(options.strict)
+    return 1 if failed else 0
+
+
+def no_blocking_calls_plain(target: str) -> int:
+    """The same step, called without options."""
+    return no_blocking_calls(target, StepOptions())
+
+
+cli: typer.Typer = typer.Typer(name="mytool")
+
+
+@cli.command("deploy")
+def deploy() -> None:
+    """A command the tool already had."""
+
+
+register_commands(
+    cli,
+    extra_steps=[
+        CheckStep(
+            name="no-blocking-calls",
+            run=no_blocking_calls_plain,
+            run_with_options=no_blocking_calls,
+        )
+    ],
+)
+
+if __name__ == "__main__":
+    cli()
+```
+
+With a `pkg/a.py` calling `os.getenv(...)` on line 6 (the step's part
+only; real output):
+
+```console
+$ python mytool.py check pkg
+$ no-blocking-calls
+pkg/a.py:6: BL002 (warning)
+$ pytest -n auto -p no:cacheprovider
+...
+$ echo $?
+0
+$ python mytool.py check pkg --strict
+$ no-blocking-calls
+pkg/a.py:6: BL002 (warning)
+$ echo $?
+1
+$ python mytool.py check pkg --rule BL001 --strict
+$ no-blocking-calls
+$ pytest -n auto -p no:cacheprovider
+...
+$ echo $?
+0
+```
+
+- `rules` is an empty tuple and `strict` is `None` when nothing was typed;
+  `StepOptions.given` tells whether either came in.
+- A step without `run_with_options` still gets only the target, through
+  `run`.
+- **An option nothing reads is refused.** When no step of the `check`
+  declares `run_with_options`, `--rule` / `--strict` exit `2` before any
+  step runs — a gate that passes while ignoring the flag would be worse
+  than an error.
+
 ## Generating the PR prompt without the CLI
 
 ```python

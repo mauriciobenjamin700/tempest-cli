@@ -56,8 +56,9 @@ from tempest_cli.pr_prompt import GitError as GitError
 from tempest_cli.pr_prompt import PromptLanguage as PromptLanguage
 from tempest_cli.pr_prompt import generate_pr_prompt as generate_pr_prompt
 from tempest_cli.steps import CheckStep as CheckStep
+from tempest_cli.steps import StepOptions as StepOptions
 
-__version__: str = "0.6.0"
+__version__: str = "0.7.0"
 """Installed package version."""
 
 __all__: list[str] = [
@@ -65,6 +66,7 @@ __all__: list[str] = [
     "CheckStep",
     "GitError",
     "PromptLanguage",
+    "StepOptions",
     "TempestConfig",
     "TypingStrictness",
     "__version__",

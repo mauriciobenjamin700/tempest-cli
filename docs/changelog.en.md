@@ -3,6 +3,15 @@
 The full history lives in the repository's
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md).
 
+## [0.7.0] — 2026-10-24
+
+### Added
+
+- **`check --rule <CODE>` and `check --strict` / `--no-strict`, for the host
+  CLI's steps.** `check` hands both, typed in a `StepOptions`, to the step
+  that declares the new `CheckStep.run_with_options`; with no such step the
+  flag exits `2`. [Details](library.md#options-for-the-step-rule-and-strict).
+
 ## [0.6.0] — 2026-10-20
 
 ### Changed

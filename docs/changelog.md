@@ -4,6 +4,16 @@ O histórico completo vive no
 [`CHANGELOG.md`](https://github.com/mauriciobenjamin700/tempest-cli/blob/main/CHANGELOG.md)
 do repositório.
 
+## [0.7.0] — 2026-10-24
+
+### Adicionado
+
+- **`check --rule <CÓDIGO>` e `check --strict` / `--no-strict`, para os
+  passos da CLI hospedeira.** O `check` entrega as duas, tipadas num
+  `StepOptions`, ao passo que declara o novo
+  `CheckStep.run_with_options`; sem nenhum passo assim, a flag sai com
+  código `2`. [Detalhes](library.md#opcoes-para-o-passo-rule-e-strict).
+
 ## [0.6.0] — 2026-10-20
 
 ### Alterado
